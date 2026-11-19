@@ -143,9 +143,29 @@
       {:st st :gt gt :vel vel})
     {}))
 
+(defn key-at
+  "位置 pos に入れる音に使う調 (原作 KEY_SUB.C scale_no、EDIT.C・mml_inp の呼び出し側)。
+   リズムトラックは 0。それ以外は pos の直前の行から上へたどり、0xF5 (調の変更) があればその調、
+   小節線・SAME・END (0xFC 以上) か先頭まで無ければ曲の調。
+   原作はカーソル行から数え始める (カーソルが小節線や END の上だと、その小節の 0xF5 を見ない) が、
+   挿入する音は カーソル行の前に入るので、直前の行から数える【設計判断】"
+  ([s] (key-at s (:pos s)))
+  ([s pos]
+   (if (:rhythm? (cur-track s))
+     0
+     (let [recs (cur-recs s)
+           song-key (or (get-in s [:song :key]) 0)]
+       (loop [j (dec (min pos (count recs)))]
+         (if (neg? j)
+           song-key
+           (let [a ((recs j) 0)]
+             (cond (= a 0xF5) ((recs j) 1)
+                   (> a 0xFB) song-key
+                   :else      (recur (dec j))))))))))
+
 (defn insert-mml [s text]
   (let [recs (cur-recs s)
-        opts (merge {:key-sig (get-in s [:song :key])} (mml-defaults recs (:pos s)))
+        opts (merge {:key-sig (key-at s)} (mml-defaults recs (:pos s)))
         evs  (polysted.mml/parse-mml text opts)]
     (insert-recs s (polysted.edit/events->records evs))))
 
@@ -159,12 +179,12 @@
 (defn insert-notes
   "音名入力 (\"C4 E G\") をカーソル位置に挿入する。
    ST GT vel は MML と同じく直前のノート/休符から引き継ぎ、
-   オクターブ省略時の基準は直前の発音ノートのキー。調号は曲の :key。
+   オクターブ省略時の基準は直前の発音ノートのキー。調号は key-at (小節の中の 0xF5 か曲の :key)。
    リズムトラックでは調号を無視する。無効なトークンは捨てて :msg に残す。"
   [s text]
   (let [recs (cur-recs s)
         pos  (:pos s)
-        ctx  (merge {:key-sig (or (get-in s [:song :key]) 0)}
+        ctx  (merge {:key-sig (key-at s)}
                     (mml-defaults recs pos)
                     (when-let [k (last-note-key recs pos)] {:last-key k})
                     (when (:rhythm? (cur-track s)) {:ignore-keysig? true}))
@@ -1521,6 +1541,17 @@
                     (assoc-in [:song :tracks 0 :rhythm?] true)
                     (insert-notes "F4") cur-recs)
                 (mapv first)))
+    (let [with-recs (fn [recs pos] (-> (new-session) (assoc-in [:song :tracks 0 :recs] recs) (assoc :pos pos)))]
+      (check "調 (scale_no): 小節の中の 0xF5 を使い、小節線で曲の調に戻る (音名・MML)"
+             [66 65 66 1]
+             [(first (last (cur-recs (insert-notes (with-recs [[0xF5 1 0 0]] 1) "F4"))))
+              (first (last (cur-recs (insert-notes (with-recs [[0xF5 1 0 0] [0xFD 0 0 0]] 2) "F4"))))
+              (first (last (cur-recs (insert-mml (with-recs [[0xF5 1 0 0]] 1) "f"))))
+              (key-at (with-recs [[0xF5 1 0 0] [60 48 46 64] [0xFD 0 0 0]] 2))])
+      (check "MML: リズムトラックでは調号を無視 (原作 mml_inp の trrhy)"
+             [65 1]
+             (let [s (-> (new-session) (assoc-in [:song :key] 1) (assoc-in [:song :tracks 0 :rhythm?] true))]
+               [(first (first (cur-recs (insert-mml s "f")))) (get-in s [:song :key])])))
     (check "音名入力: 無効なトークンは捨てて :msg に残す"
            [[[60 48 46 64]] "無効な音名: X"]
            (let [s (insert-notes (new-session) "C4 X")] [(cur-recs s) (:msg s)]))

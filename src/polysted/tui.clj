@@ -131,8 +131,7 @@
              (r 0)
              (or (ss/last-note-key rs row) 60))]
     {:last-key lk
-     :key-sig (or (get-in s [:song :key]) 0)
-     :ignore-keysig? (boolean (:rhythm? (ss/cur-track s)))}))
+     :key-sig (ss/key-at s row)}))
 
 (defn parse-field
   "欄の入力文字列 → 値。空なら :keep、不正なら nil。
