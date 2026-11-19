@@ -60,20 +60,22 @@
         (let [flat-b (if (and body (#{\B \b} (first body))) 1 0)
               body   (if (pos? flat-b) (rest body) body)]
           (when (every? #(or (digit-set %) (mark-set %)) body)
-            (let [up      (count (filter #{\# \+} body))
-                  down    (+ flat-b (count (filter #{\-} body)))
-                  cancel? (boolean (some #{\N \n \=} body))
-                  digits  (filter digit-set body)
-                  base-oct (cond
-                             (seq digits)      (- (int (last digits)) (int \0))
-                             (some #{\.} body) -1
-                             :else             (dec (quot last-key 12)))
-                  oct     (+ base-oct
-                             (count (filter #{\<} body))
-                             (- (count (filter #{\>} body))))
-                  ks-off  (if ignore-keysig? 0 (keysig-offset key-sig letter))
-                  off     (if cancel? 0 (+ ks-off up (- down)))
-                  k       (+ (* 12 (inc oct)) (base-semitone letter) off)]
+            ;; 原作 ctc: 臨時記号 (# + - N = と音名直後の B) があれば調号を使わない (skey=0)
+            (let [accidental? (or (pos? flat-b) (boolean (some #{\# \+ \- \N \n \=} body)))
+                  ks-off  (if (or ignore-keysig? accidental?) 0 (keysig-offset key-sig letter))
+                  ;; 原作 ctc: 記号を左から順に処理する (数字・. はオクターブを置き換え、< > は ±1)
+                  [semi oct] (reduce (fn [[semi oct] c]
+                                       (cond
+                                         (#{\# \+} c)   [(inc semi) oct]
+                                         (= c \-)       [(dec semi) oct]
+                                         (digit-set c)  [semi (- (int c) (int \0))]
+                                         (= c \.)       [semi -1]
+                                         (= c \<)       [semi (inc oct)]
+                                         (= c \>)       [semi (dec oct)]
+                                         :else          [semi oct]))   ; N = は調号を消すだけ
+                                     [0 (dec (quot last-key 12))]
+                                     body)
+                  k       (+ (* 12 (inc oct)) (base-semitone letter) ks-off semi (- flat-b))]
               (when (<= 0 k 127) k))))))))
 
 (defn parse-notes
@@ -118,6 +120,11 @@
          ["調号 F#"           (keys* "F4 FN4 C4" {:key-sig 1}) [66 65 60]]
          ["調号 Bb"           (keys* "B4 E4" {:key-sig 9})     [70 64]]
          ["調号を無視"        (keys* "F4" {:key-sig 1 :ignore-keysig? true}) [65]]
+         ;; 以下は原作 ctc (KEY_SUB.C) を手で追ったもの
+         ["臨時記号は調号を使わない (G 長調の F#4)" (keys* "F#4 F+4" {:key-sig 1}) [66 66]]
+         ["臨時記号は調号を使わない (F 長調の Bb4・B-4)" (keys* "Bb4 B-4" {:key-sig 9}) [70 70]]
+         ["左から順: C<4 は 4 が上書き、C4< は +1" (keys* "C<4 C4<" {}) [60 72]]
+         ["左から順: C.< は -1 のあと +1"   (keys* "C.<" {}) [12]]
          ["ST GT vel 指定"    (:records (pn "C4" {:st 24 :gt 22 :vel 100}))
                               [[60 24 22 100]]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
