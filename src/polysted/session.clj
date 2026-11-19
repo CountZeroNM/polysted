@@ -1323,10 +1323,72 @@
   []
   ((requiring-resolve 'polysted.gui/run!)))
 
+;; ---- 内蔵音源 (再生・録音の THRU・メトロノームで共有する) ----
+;; Java の内蔵音源 (Gervill) は既定で 120ms の遅れ (音のバッファ) で開かれ、MidiSystem/getSequencer の既定は
+;; 再生のたびにそれを開き直す。そこで遅れを指定して 1 度だけ開き、シーケンサは「つながっていない」もので作って
+;; この音源につなぐ。遅れの指定は Java の内部の API (com.sun.media.sound.AudioSynthesizer の open) にしか無いので、
+;; --add-exports java.desktop/com.sun.media.sound=ALL-UNNAMED が要る (deps.edn の各エイリアスと jar の manifest)。
+;; 使えなければ既定 (120ms) で開く。下限はおよそ 35ms。VMidiKey の out/open-synth! と同じ方法【設計判断】
+(def default-latency-ms 40)
+
+(defn latency-ms
+  "内蔵音源の遅れ (ミリ秒)。システムプロパティ polysted.latency か環境変数 POLYSTED_LATENCY、無ければ 40"
+  []
+  (or (some-> (or (System/getProperty "polysted.latency") (System/getenv "POLYSTED_LATENCY")) parse-long)
+      default-latency-ms))
+
+(defn- open-synth!
+  "内蔵音源 s を遅れ ms で開く。=> {:latency-ms 実際の遅れ :tuned? 指定が効いたか}"
+  [^javax.sound.midi.Synthesizer s ms]
+  (let [tuned? (try
+                 (let [m (.getMethod (Class/forName "com.sun.media.sound.AudioSynthesizer") "open"
+                                     (into-array Class [javax.sound.sampled.SourceDataLine java.util.Map]))]
+                   (.invoke m s (object-array [nil {"latency" (long (* 1000 ms))}]))
+                   true)
+                 (catch Throwable _
+                   (when-not (.isOpen s) (.open s))
+                   false))]
+    {:latency-ms (quot (.getLatency s) 1000) :tuned? tuned?}))
+
+(defonce ^:private synth (atom nil))
+
+(defn- the-synth ^javax.sound.midi.Synthesizer []
+  (or (when-let [s @synth] (when (.isOpen ^javax.sound.midi.Synthesizer s) s))
+      (let [s (MidiSystem/getSynthesizer)]
+        (open-synth! s (latency-ms))
+        (reset! synth s))))
+
+(defn synth-info
+  "内蔵音源の遅れ: (s/synth-info) => {:latency-ms 40 :tuned? true}。開いていなければ開く"
+  []
+  (let [s (the-synth)]
+    {:latency-ms (quot (.getLatency s) 1000)
+     :tuned? (not= 120 (quot (.getLatency s) 1000))}))
+
+(defn synth-receiver
+  "内蔵音源へ送る受け手 (再生のシーケンサ・THRU が使う)"
+  ^javax.sound.midi.Receiver []
+  (.getReceiver (the-synth)))
+
+(defn- new-sequencer
+  "内蔵音源につないだシーケンサ (開いた状態)"
+  ^javax.sound.midi.Sequencer []
+  (let [sr (MidiSystem/getSequencer false)]
+    (.open sr)
+    (.setReceiver (.getTransmitter sr) (synth-receiver))
+    sr))
+
+(defn- all-notes-off! []
+  (try (let [r (synth-receiver)]
+         (doseq [ch (range 16)]
+           (.send r (javax.sound.midi.ShortMessage. javax.sound.midi.ShortMessage/CONTROL_CHANGE (int ch) 123 0) -1)))
+       (catch Exception _ nil)))
+
 (defn stop! []
   (when-let [sr @seqr]
     (when (.isOpen sr) (.stop sr) (.close sr))
-    (reset! seqr nil))
+    (reset! seqr nil)
+    (all-notes-off!))
   :stopped)
 
 (defn measure-tick
@@ -1345,8 +1407,7 @@
   ([tick s]
   (stop!)
   (let [sq (polysted.mml/->sequence (->song s))
-        sr (MidiSystem/getSequencer)]
-    (.open sr)
+        sr (new-sequencer)]
     (.setSequence sr sq)
     (when (pos? tick) (.setTickPosition sr (long tick)))
     (.addMetaEventListener
@@ -1469,10 +1530,10 @@
             offset (+ start count-in)
             end (+ offset (* bar-len (inc (- btm top))))
             _ (when metronome? (metronome-track! sq bar-len (first (or (get-in s [:song :time-sig]) [4 4])) start end))
-            sr (MidiSystem/getSequencer)
-            thru (when thru? (try (MidiSystem/getReceiver) (catch Exception _ nil)))
+            sr (new-sequencer)
+            thru (when thru? (try (synth-receiver) (catch Exception _ nil)))
             dev ^javax.sound.midi.MidiDevice (:device in)]
-        (.open sr) (.setSequence sr sq) (.setTickPosition sr (long start))
+        (.setSequence sr sq) (.setTickPosition sr (long start))
         (.setTempoInBPM sr (float (or (get-in s [:song :tempo]) 120)))   ; 最初のテンポ (テンポの行があれば演奏中に変わる)
         (reset! seqr sr)
         (reset! rec-state {:running? true :seq sr :offset offset :end end :events (atom []) :opts opts :thru thru :dev dev})
@@ -1588,6 +1649,15 @@
              [65 1]
              (let [s (-> (new-session) (assoc-in [:song :key] 1) (assoc-in [:song :tracks 0 :rhythm?] true))]
                [(first (first (cur-recs (insert-mml s "f")))) (get-in s [:song :key])])))
+    (check "内蔵音源の遅れ: 既定 40ms、システムプロパティで変えられる"
+           [40 30]
+           (let [old (System/getProperty "polysted.latency")]
+             (System/clearProperty "polysted.latency")
+             (let [a (if (System/getenv "POLYSTED_LATENCY") 40 (latency-ms))]
+               (System/setProperty "polysted.latency" "30")
+               (let [b (latency-ms)]
+                 (if old (System/setProperty "polysted.latency" old) (System/clearProperty "polysted.latency"))
+                 [a b]))))
     (check "入力の機器: 既定は VMidiKey 以外を優先、切り替えは順に一周"
            ["USB MIDI" "VMidiKey" "VMidiKey" "USB MIDI" "VMidiKey" nil]
            [(default-input ["VMidiKey" "USB MIDI"]) (default-input ["VMidiKey"])

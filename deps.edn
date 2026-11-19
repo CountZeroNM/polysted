@@ -4,21 +4,23 @@
 ;;   clojure -M:repl           rebel-readline の REPL (dev/user.clj を読み込み、s が polysted.session)
 ;;   clojure -M:dev            普通の REPL (同上)
 ;;   clojure -M:check          全部の簡易チェック (NG があれば終了コード 1)
+;;   (:tui :gui :check :dev :repl は、内蔵音源の遅れを 40ms にするため Java の内部の API の利用を許す --add-exports を付ける)
 ;;   clojure -T:build uber     配布用の jar を作る (target/polysted-<版>.jar。../vmidikey/target/vmidikey-device.jar を同梱)
 ;;   clojure -M:vmidikey:tui   仮想 MIDI キーボード VMidiKey を MIDI 入力の機器に足す (:gui :repl とも組み合わせられる。README の「レコーディング」)
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.12.0"}}
  :aliases
- {:tui   {:main-opts ["-m" "polysted.tui"]}
-  :gui   {:main-opts ["-m" "polysted.gui"]}
-  :check {:main-opts ["-m" "polysted.check"]}
-  :dev   {:extra-paths ["dev"]}
+ {:tui   {:jvm-opts ["--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED"] :main-opts ["-m" "polysted.tui"]}
+  :gui   {:jvm-opts ["--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED"] :main-opts ["-m" "polysted.gui"]}
+  :check {:jvm-opts ["--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED"] :main-opts ["-m" "polysted.check"]}
+  :dev   {:extra-paths ["dev"] :jvm-opts ["--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED"]}
   :repl  {:extra-paths ["dev"]
+          :jvm-opts ["--add-exports=java.desktop/com.sun.media.sound=ALL-UNNAMED"]
           :extra-deps {com.bhauman/rebel-readline {:mvn/version "0.1.4"}}
           :main-opts ["-m" "rebel-readline.main"]}
-  ;; VMidiKey (https://github.com/CountZeroNM/vmidikey) の仮想 MIDI 入力の機器を classpath に足す。
-  ;; vmidikey を polysted と同じ階層に clone し、vmidikey で bb device を実行して jar を作っておく
   ;; 配布用の jar を作る (build.clj)
   :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}}
           :ns-default build}
+  ;; VMidiKey (https://github.com/CountZeroNM/vmidikey) の仮想 MIDI 入力の機器を classpath に足す。
+  ;; vmidikey を polysted と同じ階層に clone し、vmidikey で bb device を実行して jar を作っておく
   :vmidikey {:extra-deps {vmidikey/device {:local/root "../vmidikey/target/vmidikey-device.jar"}}}}}

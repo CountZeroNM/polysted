@@ -6,7 +6,7 @@
 (ns build
   (:require [clojure.tools.build.api :as b]))
 
-(def version "0.1.0")
+(def version "0.1.1")
 (def class-dir "target/classes")
 (def uber-file (format "target/polysted-%s.jar" version))
 
@@ -25,5 +25,7 @@
     (b/compile-clj {:basis basis :class-dir class-dir
                     :ns-compile '[polysted.main polysted.gui polysted.tui polysted.check]
                     :java-opts ["-Djava.awt.headless=true"]})
-    (b/uber {:class-dir class-dir :uber-file uber-file :basis basis :main 'polysted.main})
+    ;; 内蔵音源の遅れを指定するため、Java の内部の API を使えるようにする (java -jar のとき manifest で効く)
+    (b/uber {:class-dir class-dir :uber-file uber-file :basis basis :main 'polysted.main
+             :manifest {"Add-Exports" "java.desktop/com.sun.media.sound"}})
     (println "作成:" uber-file)))
