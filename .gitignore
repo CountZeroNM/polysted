@@ -9,3 +9,4 @@ samples/*
 .cpcache/
 song.edn
 *.mid
+.claude/settings.local.json
