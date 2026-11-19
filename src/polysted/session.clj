@@ -1,4 +1,4 @@
-;; polysted_session.clj -- 編集セッション (UI非依存コア + REPL層) (動作未確認)
+;; src/polysted/session.clj -- 編集セッション (UI非依存コア + REPL層) (動作未確認)
 ;;
 ;; 構成:
 ;;   1. コア: すべて純粋関数 (state, 引数...) -> state。TUI/GUI からも同じ関数を使う。
@@ -6,19 +6,14 @@
 ;;   3. REPL層: atom S に状態を持ち、短い名前の関数で操作する。
 ;;
 ;; 使い方 (REPL):
-;;   (load-file "polysted.clj") (load-file "polysted_rcp.clj")
-;;   (load-file "polysted_edit.clj") (load-file "polysted_notename.clj")
-;;   (load-file "polysted_edn.clj") (load-file "polysted_smf.clj") (load-file "polysted_replace.clj") (load-file "polysted_rhythm.clj")
-;;   (load-file "polysted_ctrl.clj") (load-file "polysted_roll.clj") (load-file "polysted_visual.clj")
-;;   (load-file "polysted_session.clj")
-;;   (alias 's 'polysted-session)
+;;   (require '[polysted.session :as s])   ; clojure -M:repl なら dev/user.clj で済んでいる
 ;;   (s/mml "l8 o4 cdefgab<c")  (s/n "C4 E G")  (s/show)  (s/play!)
-(ns polysted-session
+(ns polysted.session
   (:refer-clojure :exclude [replicate])
   (:require [clojure.string :as str]
-            [polysted] [polysted-rcp] [polysted-edit] [polysted-notename] [polysted-edn] [polysted-smf] [polysted-replace] [polysted-rhythm] [polysted-roll] [polysted-visual] [polysted-record])
-  ;; コントローラ・調などの純粋関数は polysted_ctrl.clj に分けた (名前はそのまま使う)
-  (:require [polysted-ctrl :refer [ctrl-cells ctrl-insert-fields exc-hex key-shift-str key-str mode-str parse-ch
+            [polysted.mml] [polysted.rcp] [polysted.edit] [polysted.notename] [polysted.edn] [polysted.smf] [polysted.replace] [polysted.rhythm] [polysted.roll] [polysted.visual] [polysted.record])
+  ;; コントローラ・調などの純粋関数は src/polysted/ctrl.clj に分けた (名前はそのまま使う)
+  (:require [polysted.ctrl :refer [ctrl-cells ctrl-insert-fields exc-hex key-shift-str key-str mode-str parse-ch
                                 parse-exc-data parse-key parse-rhythm-assign rhy-str set-ctrl-field
                                 spc-code supported-ctrls uex-data uex-ins uex-del uex-sum track-mode]])
   (:import (javax.sound.midi MidiSystem MetaEventListener)))
@@ -40,10 +35,10 @@
    save-rcp! で書き戻せる。G36 (RCP v3) は 4 バイトの形に変換して読む (小節線の番号を振り直す。
    変換の注意は :load-warnings)"
   [path]
-  (let [song (polysted-rcp/read-rcp path)
+  (let [song (polysted.rcp/read-rcp path)
         g36? (seq (:load-warnings song))]
     (update song :tracks
-            (fn [ts] (mapv #(cond-> (dissoc % :events) g36? (update :recs polysted-edit/renumber-measures)) ts)))))
+            (fn [ts] (mapv #(cond-> (dissoc % :events) g36? (update :recs polysted.edit/renumber-measures)) ts)))))
 
 (defn cur-track [s] (get-in s [:song :tracks (:tr s)]))
 (defn cur-recs [s] (:recs (cur-track s)))
@@ -100,12 +95,12 @@
   (if (empty? new-recs)
     s
     (-> s push-undo
-        (set-recs (polysted-edit/insert-records (cur-recs s) (:pos s) new-recs))
+        (set-recs (polysted.edit/insert-records (cur-recs s) (:pos s) new-recs))
         (update :pos + (count new-recs)))))
 
 (defn delete-recs
   "カーソル位置から n 個のレコードを削除。後ろの SAME の参照を直す
-   (1行なら DEL キーの規則 polysted-edit/delete-line、複数行なら範囲削除の規則)。
+   (1行なら DEL キーの規則 polysted.edit/delete-line、複数行なら範囲削除の規則)。
    1行のときは消した行を削除行バッファ :line-buf に入れる (原作の lcbuf。Ctrl-L で復活)。
    トラックエクスクルーシブ (0x98) とコメント (0xF6) は続きの 0xF7 の行ごと消す"
   [s n]
@@ -122,8 +117,8 @@
       (-> s push-undo
           (cond-> (or (= to (inc p)) group?) (assoc :line-buf (subvec recs p to)))
           (set-recs (if (= to (inc p))
-                      (polysted-edit/delete-line recs p)
-                      (:recs (polysted-edit/delete-range recs p to))))))))
+                      (polysted.edit/delete-line recs p)
+                      (:recs (polysted.edit/delete-range recs p to))))))))
 
 (declare insert-line)
 
@@ -151,8 +146,8 @@
 (defn insert-mml [s text]
   (let [recs (cur-recs s)
         opts (merge {:key-sig (get-in s [:song :key])} (mml-defaults recs (:pos s)))
-        evs  (polysted/parse-mml text opts)]
-    (insert-recs s (polysted-edit/events->records evs))))
+        evs  (polysted.mml/parse-mml text opts)]
+    (insert-recs s (polysted.edit/events->records evs))))
 
 (defn last-note-key
   "カーソル直前の最も近い発音ノート(休符は除く)のキー番号。なければ nil。
@@ -173,7 +168,7 @@
                     (mml-defaults recs pos)
                     (when-let [k (last-note-key recs pos)] {:last-key k})
                     (when (:rhythm? (cur-track s)) {:ignore-keysig? true}))
-        {:keys [records errors]} (polysted-notename/parse-notes text ctx)]
+        {:keys [records errors]} (polysted.notename/parse-notes text ctx)]
     (cond-> (insert-recs s records)
       (seq errors) (assoc :msg (str "無効な音名: " (str/join " " errors))))))
 
@@ -225,10 +220,10 @@
 
 (defn insert-line
   "カーソル行に1行挿入し、カーソルを1つ下へ。小節の数が変わるときは後ろの SAME の参照をずらす
-   (polysted-edit/insert-line)。undo 1回分"
+   (polysted.edit/insert-line)。undo 1回分"
   [s rec]
   (-> s push-undo
-      (set-recs (polysted-edit/insert-line (cur-recs s) (:pos s) rec))
+      (set-recs (polysted.edit/insert-line (cur-recs s) (:pos s) rec))
       (update :pos inc)))
 
 (defn insert-measure
@@ -261,8 +256,8 @@
   [recs row j]
   (cond
     (not (and (integer? j) (<= 1 j 1024))) "指定出来ない小節です (1〜1024)"
-    (>= j (polysted-edit/meas-no recs row))    "指定出来ない小節です (この行より前の小節を指定)"
-    (= 0xFC (get-in recs [(polysted-edit/meas-add recs j) 0])) "指定出来ない小節です (SAME の小節は指定できない)"))
+    (>= j (polysted.edit/meas-no recs row))    "指定出来ない小節です (この行より前の小節を指定)"
+    (= 0xFC (get-in recs [(polysted.edit/meas-add recs j) 0])) "指定出来ない小節です (SAME の小節は指定できない)"))
 
 (defn set-same-ref [rec j]
   (let [m (dec j)] (assoc rec 1 (bit-and m 0xFF) 2 (bit-shift-right m 8))))
@@ -308,7 +303,7 @@
   "row のトラックエクスクルーシブ (0x98) のデータを bytes (F7 で終わる) に置き換える (続く 0xF7 の行を作り直す。undo は積まない)"
   [s row bytes]
   (let [recs  (cur-recs s)
-        [_ j] (polysted-rcp/track-exclusive-data recs row)
+        [_ j] (polysted.rcp/track-exclusive-data recs row)
         d     (if (odd? (count bytes)) (conj (vec bytes) 0xF7) (vec bytes))
         block (mapv (fn [[x y]] [0xF7 0 x y]) (partition 2 d))]
     (set-recs s (vec (concat (subvec recs 0 (inc row)) block (subvec recs j))))))
@@ -328,7 +323,7 @@
 (defn exclusive-text
   "row のトラックエクスクルーシブのデータを入力の書式で (編集の初期値)"
   [s row]
-  (exc-hex (first (polysted-rcp/track-exclusive-data (cur-recs s) row))))
+  (exc-hex (first (polysted.rcp/track-exclusive-data (cur-recs s) row))))
 
 (defn set-user-exc
   "ヘッダのユーザーエクスクルーシブ n (0〜7) のデータを設定する (24 バイトまで、残りは F7 で埋める)"
@@ -384,7 +379,7 @@
 (defn exc-messages-at "カーソル行のトラックエクスクルーシブのデータ (F7 を除く) を 1 メッセージの列で。0x98 の行でなければ nil" [s]
   (let [r (get (cur-recs s) (:pos s))]
     (when (and r (= 0x98 (r 0)))
-      [(vec (take-while #(not= % 0xF7) (first (polysted-rcp/track-exclusive-data (cur-recs s) (:pos s)))))])))
+      [(vec (take-while #(not= % 0xF7) (first (polysted.rcp/track-exclusive-data (cur-recs s) (:pos s)))))])))
 
 (defn load-exc-messages
   "EXC ファイルのメッセージをトラックエクスクルーシブにする: カーソルが Tr.Exclu ならそれを 1 つ目で置き換え、
@@ -395,7 +390,7 @@
     (let [recs (cur-recs s) p (:pos s) r (get recs p)
           block (fn [head m] (let [d (conj (vec m) 0xF7) d (if (odd? (count d)) (conj d 0xF7) d)]
                                (into [head] (map (fn [[x y]] [0xF7 0 x y]) (partition 2 d)))))
-          [head end] (if (and r (= 0x98 (r 0))) [r (second (polysted-rcp/track-exclusive-data recs p))] [[0x98 0 0 0] p])
+          [head end] (if (and r (= 0x98 (r 0))) [r (second (polysted.rcp/track-exclusive-data recs p))] [[0x98 0 0 0] p])
           blocks (into (block head (first msgs)) (mapcat #(block [0x98 0 0 0] %) (rest msgs)))]
       (-> s push-undo
           (set-recs (vec (concat (subvec recs 0 p) blocks (subvec recs end))))
@@ -422,7 +417,7 @@
 
 (defn optimize [s]
   (let [t (cur-track s)
-        recs (polysted-edit/optimize-records (:recs t) (or (:ch t) 0))]
+        recs (polysted.edit/optimize-records (:recs t) (or (:ch t) 0))]
     (-> s push-undo (set-recs recs) (goto-pos (:pos s)))))
 
 (defn- clamp-range [s from to]
@@ -436,7 +431,7 @@
   [s from to]
   (let [[lo hi] (clamp-range s from to)]
     (if (< lo hi)
-      (assoc s :clip (polysted-edit/expand-same-range (cur-recs s) lo hi))
+      (assoc s :clip (polysted.edit/expand-same-range (cur-recs s) lo hi))
       s)))
 
 (defn cut
@@ -444,7 +439,7 @@
   [s from to]
   (let [[lo hi] (clamp-range s from to)]
     (if (< lo hi)
-      (let [{:keys [recs buf]} (polysted-edit/delete-range (cur-recs s) lo hi)]
+      (let [{:keys [recs buf]} (polysted.edit/delete-range (cur-recs s) lo hi)]
         (-> s push-undo (set-recs recs) (assoc :clip buf) (goto-pos lo)))
       s)))
 
@@ -456,7 +451,7 @@
     (if (empty? clip)
       s
       (-> s push-undo
-          (set-recs (polysted-edit/paste-records (cur-recs s) (:pos s) clip))
+          (set-recs (polysted.edit/paste-records (cur-recs s) (:pos s) clip))
           (update :pos + (count clip))))))
 
 (defn paste-reversed
@@ -465,9 +460,9 @@
   (let [clip (:clip s)]
     (if (empty? clip)
       s
-      (let [rev (polysted-edit/reverse-records clip)]
+      (let [rev (polysted.edit/reverse-records clip)]
         (-> s push-undo
-            (set-recs (polysted-edit/paste-records (cur-recs s) (:pos s) rev))
+            (set-recs (polysted.edit/paste-records (cur-recs s) (:pos s) rev))
             (update :pos + (count rev)))))))
 
 (defn mix-paste
@@ -477,8 +472,8 @@
     (if (empty? clip)
       s
       (-> s push-undo
-          (set-recs (polysted-edit/renumber-measures
-                     (into (subvec recs 0 p) (polysted-edit/mix-records (subvec recs p) clip))))))))
+          (set-recs (polysted.edit/renumber-measures
+                     (into (subvec recs 0 p) (polysted.edit/mix-records (subvec recs p) clip))))))))
 
 (defn quantize
   "[from, to) をクオンタイズ (原作の Q)。res: 解像度 2〜48、rate: 50〜100 (%)。範囲外の値なら :msg"
@@ -488,7 +483,7 @@
     (not (and (integer? rate) (<= 50 rate 100))) (assoc s :msg "レートは 50〜100 (%) です")
     :else
     (let [[lo hi] (clamp-range s from to)]
-      (-> s push-undo (set-recs (polysted-edit/quantize (cur-recs s) lo hi res rate))))))
+      (-> s push-undo (set-recs (polysted.edit/quantize (cur-recs s) lo hi res rate))))))
 
 (def note-ctrl-modes
   "Shift+F1 のモード文字 → キーワード (TRACK.C note_ctrl)"
@@ -515,24 +510,24 @@
      (let [[lo hi] (clamp-range s from to)
            recs (cur-recs s)
            recs' (case mode
-                   (:sort-up :sort-down) (polysted-edit/sort-chords recs lo hi (= mode :sort-up))
-                   (:strum-gt :strum-st) (polysted-edit/strum-chords recs lo hi a (= mode :strum-gt))
-                   (polysted-edit/velocity-ctrl recs lo hi mode a b rng))]
+                   (:sort-up :sort-down) (polysted.edit/sort-chords recs lo hi (= mode :sort-up))
+                   (:strum-gt :strum-st) (polysted.edit/strum-chords recs lo hi a (= mode :strum-gt))
+                   (polysted.edit/velocity-ctrl recs lo hi mode a b rng))]
        (if (= recs recs') s (-> s push-undo (set-recs recs')))))))
 
 (defn- replace-opts [] {:spc-code #'spc-code :prog-min 1})
 
 (defn replace-range
   "[from, to) に置換 (mode :replace、原作の F3) か指定削除 (:delete、Shift+F3) を当てる。
-   指定は polysted-replace の書式 (例 \"C4:D#4\" \",,,:+10\" \"/V:/E\")。指定は :repl / :delt に覚える"
+   指定は polysted.replace の書式 (例 \"C4:D#4\" \",,,:+10\" \"/V:/E\")。指定は :repl / :delt に覚える"
   [s from to text mode]
   (let [[lo hi] (clamp-range s from to)
         s (assoc s (if (= mode :delete) :delt :repl) text)
-        {:keys [recs hits error]} (polysted-replace/apply-specs (cur-recs s) lo hi text mode (replace-opts))]
+        {:keys [recs hits error]} (polysted.replace/apply-specs (cur-recs s) lo hi text mode (replace-opts))]
     (cond
       error (assoc s :msg error)
       (zero? hits) (assoc s :msg "該当するデータはありません")
-      :else (-> s push-undo (set-recs (polysted-edit/renumber-measures recs))
+      :else (-> s push-undo (set-recs (polysted.edit/renumber-measures recs))
                 (assoc :msg (str hits " か所を" (if (= mode :delete) "削除" "置換") "しました"))))))
 
 (defn find-next
@@ -542,7 +537,7 @@
    (if (str/blank? text)
      (assoc s :msg "検索の指定がありません (F4 / Ctrl-F で指定)")
      (let [s (assoc s :srch text)
-           r (polysted-replace/find-match (cur-recs s) (:pos s) text forward? (replace-opts))]
+           r (polysted.replace/find-match (cur-recs s) (:pos s) text forward? (replace-opts))]
        (cond
          (map? r) (assoc s :msg (:error r))
          r (assoc s :pos r)
@@ -554,14 +549,14 @@
   "f で曲を変えたあと、カーソルを変更前と同じ小節・同じ時刻へ (原作の meas_add + sttm_ad)"
   [s f]
   (let [recs (cur-recs s) p (:pos s)
-        meas (polysted-edit/meas-no recs p) st (measure-st recs p)
+        meas (polysted.edit/meas-no recs p) st (measure-st recs p)
         s2 (f s)]
     (assoc s2 :pos (min (track-pos-at (cur-recs s2) meas st) (count (cur-recs s2))))))
 
 (defn same-convert
   "重複した小節を SAME に置き換える (原作の Shift+^)"
   [s]
-  (let [{:keys [recs count]} (polysted-edit/same-meas-conv (cur-recs s))]
+  (let [{:keys [recs count]} (polysted.edit/same-meas-conv (cur-recs s))]
     (if (zero? count)
       (assoc s :msg "重複した小節はありません")
       (-> s push-undo (keep-position #(set-recs % recs))
@@ -575,7 +570,7 @@
          n (count (filter #(= 0xFC (% 0)) (subvec (cur-recs s) lo hi)))]
      (if (zero? n)
        (assoc s :msg "展開する SAME はありません")
-       (-> s push-undo (keep-position #(set-recs % (polysted-edit/same-meas-extract (cur-recs %) lo hi)))
+       (-> s push-undo (keep-position #(set-recs % (polysted.edit/same-meas-extract (cur-recs %) lo hi)))
            (assoc :msg (str n " か所の SAME を展開しました")))))))
 
 (defn repeat-compress
@@ -583,7 +578,7 @@
   ([s] (repeat-compress s false))
   ([s all?]
    (let [ts (get-in s [:song :tracks])
-         res (mapv (fn [i t] (if (or all? (= i (:tr s))) (polysted-edit/repeat-compress (:recs t)) {:recs (:recs t) :count 0}))
+         res (mapv (fn [i t] (if (or all? (= i (:tr s))) (polysted.edit/repeat-compress (:recs t)) {:recs (:recs t) :count 0}))
                    (range) ts)
          n (reduce + (map :count res))]
      (if (zero? n)
@@ -597,7 +592,7 @@
   "全トラックで重複した小節を SAME に置き換える (原作のトラック設定の A)"
   [s]
   (let [ts (get-in s [:song :tracks])
-        res (mapv #(if (seq (:recs %)) (polysted-edit/same-meas-conv (:recs %)) {:recs (:recs %) :count 0}) ts)
+        res (mapv #(if (seq (:recs %)) (polysted.edit/same-meas-conv (:recs %)) {:recs (:recs %) :count 0}) ts)
         n (reduce + (map :count res))]
     (if (zero? n)
       (assoc s :msg "重複した小節はありません")
@@ -621,11 +616,11 @@
     (if-let [err (or (when-not (and src (< -1 src (count ts))) (str "トラックは 1〜" (count ts) " です"))
                      (replicate-error top end times bias))]
       (assoc s :msg err)
-      (let [buf (polysted-edit/shift-keys (polysted-edit/measure-range-buffer (:recs (ts src)) top end) bias)]
+      (let [buf (polysted.edit/shift-keys (polysted.edit/measure-range-buffer (:recs (ts src)) top end) bias)]
         (if (empty? buf)
           (assoc s :msg "コピー元の小節にデータがありません")
           (-> s push-undo (assoc :clip buf)
-              (set-recs (polysted-edit/renumber-measures (polysted-edit/insert-times (cur-recs s) (:pos s) buf times)))
+              (set-recs (polysted.edit/renumber-measures (polysted.edit/insert-times (cur-recs s) (:pos s) buf times)))
               (assoc :msg (str "TR" (inc src) " の小節 " top "〜" end " を " times " 回コピーしました"))))))))
 
 (defn replicate-all
@@ -633,15 +628,15 @@
   [s top end times bias]
   (if-let [err (replicate-error top end times bias)]
     (assoc s :msg err)
-    (let [dst (polysted-edit/meas-no (cur-recs s) (:pos s))
+    (let [dst (polysted.edit/meas-no (cur-recs s) (:pos s))
           s1  (push-undo s)
           tracks (mapv (fn [t]
                          (let [recs (:recs t)
-                               buf  (polysted-edit/shift-keys (polysted-edit/measure-range-buffer recs top end) bias)]
+                               buf  (polysted.edit/shift-keys (polysted.edit/measure-range-buffer recs top end) bias)]
                            (if (or (empty? recs) (empty? buf))
                              t
-                             (let [ad (or (polysted-edit/meas-add recs dst) (count recs))]
-                               (assoc t :recs (polysted-edit/renumber-measures (polysted-edit/insert-times recs ad buf times)))))))
+                             (let [ad (or (polysted.edit/meas-add recs dst) (count recs))]
+                               (assoc t :recs (polysted.edit/renumber-measures (polysted.edit/insert-times recs ad buf times)))))))
                        (get-in s [:song :tracks]))]
       (-> s1 (assoc-in [:song :tracks] tracks) (goto-pos (:pos s))
           (assoc :msg (str "全トラックの小節 " top "〜" end " を " times " 回コピーしました"))))))
@@ -656,32 +651,32 @@
                      (when (and dst (not (< -1 dst (count ts)))) (str "トラックは 1〜" (count ts) " です"))
                      (replicate-error top top times bias))]
       (assoc s :msg err)
-      (let [buf (polysted-edit/expand-same-range (cur-recs s) lo hi)
-            buf (polysted-edit/shift-keys (if (not= ((peek buf) 0) 0xFD) (conj buf [0xFD 0 0 0]) buf) bias)
-            put (fn [t] (let [recs (:recs t) ad (or (polysted-edit/meas-add recs top) (count recs))]
-                          (assoc t :recs (polysted-edit/renumber-measures (polysted-edit/insert-times recs ad buf times)))))
+      (let [buf (polysted.edit/expand-same-range (cur-recs s) lo hi)
+            buf (polysted.edit/shift-keys (if (not= ((peek buf) 0) 0xFD) (conj buf [0xFD 0 0 0]) buf) bias)
+            put (fn [t] (let [recs (:recs t) ad (or (polysted.edit/meas-add recs top) (count recs))]
+                          (assoc t :recs (polysted.edit/renumber-measures (polysted.edit/insert-times recs ad buf times)))))
             tracks (vec (map-indexed (fn [i t] (if (if dst (= i dst) (:ch t)) (put t) t)) ts))]
         (-> s push-undo (assoc :clip buf) (assoc-in [:song :tracks] tracks) (goto-pos (:pos s))
             (assoc :msg (str "範囲を " (if dst (str "TR" (inc dst)) "全トラック") " の小節 " top " へ " times " 回コピーしました")))))))
 
 ;; ------------------------------------------------------------
-;; リズムパターン編集 (原作 REDIT.C。変換は polysted-rhythm)
+;; リズムパターン編集 (原作 REDIT.C。変換は polysted.rhythm)
 ;; ------------------------------------------------------------
 (declare key->name)
 (defn- ss-key-name [k] (if (zero? k) "OFF" (key->name k)))
 
 (defn rhythm-assign "使うリズム割り当て表 (空なら SC55.DEF の既定)" [s]
-  (polysted-rhythm/effective-assign (get-in s [:song :rhythm-assign])))
+  (polysted.rhythm/effective-assign (get-in s [:song :rhythm-assign])))
 
 (defn bar-st "1小節の ST (タイムベース × 4 × 拍子の分子 ÷ 分母、REDIT.C の barstep)" [s]
   (let [tb (or (get-in s [:song :timebase]) 48) [a b] (or (get-in s [:song :time-sig]) [4 4])]
     (quot (* tb 4 a) b)))
 
 (defn rhythm-pattern "今のトラックの小節 meas のパターン" [s meas]
-  (polysted-rhythm/measure->pattern (cur-recs s) meas (rhythm-assign s) (bar-st s) (or (:rhy-step s) 12)))
+  (polysted.rhythm/measure->pattern (cur-recs s) meas (rhythm-assign s) (bar-st s) (or (:rhy-step s) 12)))
 
 (defn measure-count "今のトラックの小節の数 (末尾の空の小節を含む)" [s]
-  (let [recs (cur-recs s)] (polysted-edit/meas-no recs (count recs))))
+  (let [recs (cur-recs s)] (polysted.edit/meas-no recs (count recs))))
 
 (defn rhythm-update
   "小節 meas のパターンを f で変えて書き戻す (undo 1回分)。SAME の小節・ステップが多すぎる小節は :msg"
@@ -692,7 +687,7 @@
       (:too-many? p) (assoc s :msg "この小節はステップが多すぎます。編集できません")
       :else
       (let [as (rhythm-assign s)
-            recs (polysted-rhythm/replace-measure (cur-recs s) meas (polysted-rhythm/pattern->records (f p) as))]
+            recs (polysted.rhythm/replace-measure (cur-recs s) meas (polysted.rhythm/pattern->records (f p) as))]
         (-> s push-undo (set-recs recs)
             ;; 既定の割り当て表を使ったときは曲にも記録する (RCP 保存で残るように)
             (cond-> (not (some #(pos? (second %)) (get-in s [:song :rhythm-assign])))
@@ -735,16 +730,16 @@
   ([s step-st]
    (if (and step-st (not (or (<= 6 step-st 96) (= step-st 192))))
      (assoc s :msg "ステップの ST は 6〜96 か 192 です")
-     (let [recs (polysted-edit/renumber-measures (conj (cur-recs s) [0xFD 0 0 0]))]
+     (let [recs (polysted.edit/renumber-measures (conj (cur-recs s) [0xFD 0 0 0]))]
        (-> s push-undo (set-recs recs)
            (cond-> step-st (assoc :rhy-step step-st))
-           (assoc :rhy-meas (polysted-edit/meas-no recs (dec (count recs)))))))))
+           (assoc :rhy-meas (polysted.edit/meas-no recs (dec (count recs)))))))))
 
 ;; ---- リズム画面の小節の切り取り・複写・貼り付け (REDIT.C の F7 / F8 / F9) ----
 (defn- rhythm-measure-range
   "小節 meas の行の範囲 [lo hi) (小節線か SAME まで、END は含まない。meas_len)。小節が無ければ nil"
   [recs meas]
-  (when-let [lo (polysted-edit/meas-add recs meas)]
+  (when-let [lo (polysted.edit/meas-add recs meas)]
     (let [n (count recs)]
       [lo (loop [j lo] (cond (>= j n) n (= 0xFE ((recs j) 0)) j (> ((recs j) 0) 0xFB) (inc j) :else (recur (inc j))))])))
 
@@ -756,7 +751,7 @@
   [s meas]
   (let [recs (cur-recs s) [lo hi] (rhythm-measure-range recs meas)]
     (if (and lo (< lo hi))
-      (assoc s :rhy-clip (close-bar (polysted-edit/expand-same-range recs lo hi)) :msg (str "小節 " meas " を複写しました"))
+      (assoc s :rhy-clip (close-bar (polysted.edit/expand-same-range recs lo hi)) :msg (str "小節 " meas " を複写しました"))
       (assoc s :msg "空の小節です"))))
 
 (defn rhythm-cut-measure
@@ -764,7 +759,7 @@
   [s meas]
   (let [recs (cur-recs s) [lo hi] (rhythm-measure-range recs meas)]
     (if (and lo (< lo hi))
-      (let [{r :recs buf :buf} (polysted-edit/delete-range recs lo hi)]
+      (let [{r :recs buf :buf} (polysted.edit/delete-range recs lo hi)]
         (-> s push-undo (set-recs r) (assoc :rhy-clip (close-bar buf) :msg (str "小節 " meas " を切り取りました"))))
       (assoc s :msg "空の小節です"))))
 
@@ -772,8 +767,8 @@
   "バッファの小節を小節 meas の前に挿入する (原作の F9)。後ろの SAME の参照をずらす。undo 1回分"
   [s meas]
   (if-let [clip (:rhy-clip s)]
-    (let [recs (cur-recs s) lo (or (polysted-edit/meas-add recs meas) (count recs))]
-      (-> s push-undo (set-recs (polysted-edit/paste-records recs lo clip)) (assoc :msg (str "小節 " meas " の前に貼り付けました"))))
+    (let [recs (cur-recs s) lo (or (polysted.edit/meas-add recs meas) (count recs))]
+      (-> s push-undo (set-recs (polysted.edit/paste-records recs lo clip)) (assoc :msg (str "小節 " meas " の前に貼り付けました"))))
     (assoc s :msg "複写した小節がありません (F8 / y で複写、F7 / x で切り取り)")))
 
 (defn value-step
@@ -783,9 +778,9 @@
     (if-not r
       s
       (let [r2 (case op
-                 :rev (polysted-edit/val-rev r cx)
-                 (polysted-edit/val-step r cx (if (#{:inc :inc-big} op) 1 -1) (#{:inc-big :dec-big} op)
-                                     (polysted-edit/meas-no recs p)))]
+                 :rev (polysted.edit/val-rev r cx)
+                 (polysted.edit/val-step r cx (if (#{:inc :inc-big} op) 1 -1) (#{:inc-big :dec-big} op)
+                                     (polysted.edit/meas-no recs p)))]
         (replace-rec s p r2)))))
 
 (defn chord-target
@@ -801,26 +796,26 @@
   [s row ks]
   (let [recs (cur-recs s) r (recs row)]
     (-> s push-undo
-        (set-recs (vec (concat (subvec recs 0 row) (polysted-edit/chord-records r ks) (subvec recs (inc row)))))
+        (set-recs (vec (concat (subvec recs 0 row) (polysted.edit/chord-records r ks) (subvec recs (inc row)))))
         (assoc :pos (+ row (dec (count ks)))))))
 
 (defn roll-edit
   "ピアノロールでの編集 (今のトラック、undo 1回分。カーソルは編集した音の行へ)。
    op: :key [idx キー] / :gt [idx GT] / :move [idx tick キー] / :add [tick キー GT VEL] / :delete [idx]。
-   規則は polysted_roll.clj。できないときは :msg"
+   規則は src/polysted/roll.clj。できないときは :msg"
   [s op args]
   (let [recs (cur-recs s)
-        note! (fn [i] (when-not (polysted-roll/note-rec? (get recs i)) {:error "音の行ではありません"}))
+        note! (fn [i] (when-not (polysted.roll/note-rec? (get recs i)) {:error "音の行ではありません"}))
         res (case op
               :key    (let [[i k] args] (or (note! i) (if (<= 0 k 127) {:recs (assoc-in recs [i 0] k) :idx i} {:error "キーは 0〜127 です"})))
               :gt     (let [[i g] args] (or (note! i) (if (<= 1 g 255) {:recs (assoc-in recs [i 2] g) :idx i} {:error "GT は 1〜255 です"})))
-              :move   (let [[i t k] args] (if (<= 0 k 127) (polysted-roll/move-note recs i (max 0 t) k) {:error "キーは 0〜127 です"}))
-              :add    (let [[t k g v] args] (polysted-roll/insert-note recs (max 0 t) (-> k (max 0) (min 127)) (-> g (max 1) (min 255)) (-> v (max 1) (min 127))))
-              :delete (let [[i] args] (or (note! i) {:recs (polysted-roll/remove-note recs i) :idx (min i (dec (count recs)))})))]
+              :move   (let [[i t k] args] (if (<= 0 k 127) (polysted.roll/move-note recs i (max 0 t) k) {:error "キーは 0〜127 です"}))
+              :add    (let [[t k g v] args] (polysted.roll/insert-note recs (max 0 t) (-> k (max 0) (min 127)) (-> g (max 1) (min 255)) (-> v (max 1) (min 127))))
+              :delete (let [[i] args] (or (note! i) {:recs (polysted.roll/remove-note recs i) :idx (min i (dec (count recs)))})))]
     (cond
       (:error res)         (assoc s :msg (:error res))
       (= (:recs res) recs) s
-      :else (-> s push-undo (set-recs (polysted-edit/renumber-measures (:recs res))) (assoc :pos (:idx res))))))
+      :else (-> s push-undo (set-recs (polysted.edit/renumber-measures (:recs res))) (assoc :pos (:idx res))))))
 
 (defn bar-length "1小節の ST (タイムベース × 4 × 拍子の分子 ÷ 分母)" [s]
   (let [tb (or (get-in s [:song :timebase]) 48) [a b] (or (get-in s [:song :time-sig]) [4 4])]
@@ -836,26 +831,26 @@
   [s {:keys [vmo para step from len ost changed?] :as v} mix?]
   (let [recs (cur-recs s)
         kind (select-keys v [:vmo :vmo2 :exc])
-        pts (polysted-visual/link-points {:para para :step step})
+        pts (polysted.visual/link-points {:para para :step step})
         at-end? (let [r (get recs from)] (or (nil? r) (= 0xFE (r 0))))
         [new-recs pos]
         (cond
           (pos? len) [(if changed?
-                        (polysted-visual/mix-in recs from pts kind ost)
-                        (polysted-visual/overwrite recs from (+ from len) kind para))
+                        (polysted.visual/mix-in recs from pts kind ost)
+                        (polysted.visual/overwrite recs from (+ from len) kind para))
                       from]
-          (and mix? (not at-end?)) [(polysted-visual/mix-in recs from pts kind ost) from]
+          (and mix? (not at-end?)) [(polysted.visual/mix-in recs from pts kind ost) from]
           :else
           (let [rs (if at-end?
-                     (let [d (polysted-roll/roll-data recs) t (polysted-roll/cursor-tick d from)
+                     (let [d (polysted.roll/roll-data recs) t (polysted.roll/cursor-tick d from)
                            bar (or (last (filter #(<= % t) (:bars d))) 0)]
-                       (polysted-visual/points->records pts kind (- t bar) (bar-length s)))
-                     (polysted-visual/points->records pts kind))]
+                       (polysted.visual/points->records pts kind (- t bar) (bar-length s)))
+                     (polysted.visual/points->records pts kind))]
             [(vec (concat (subvec recs 0 from) rs (subvec recs from))) (+ from (count rs))]))]
     (if (= new-recs recs)
       s
-      (-> s push-undo (set-recs (polysted-edit/renumber-measures new-recs)) (assoc :pos (min pos (count new-recs)))
-          (assoc :msg (str (polysted-visual/kind-name vmo) " を書き込みました"))))))
+      (-> s push-undo (set-recs (polysted.edit/renumber-measures new-recs)) (assoc :pos (min pos (count new-recs)))
+          (assoc :msg (str (polysted.visual/kind-name vmo) " を書き込みました"))))))
 
 (defn duplicate-line
   "カーソル行を二重化する (F10)。カーソルは下 (元の行) へ"
@@ -876,7 +871,7 @@
 (defn track-stats
   "トラック設定の STEP (レコード数) と TOTAL ST (ST の合計。255/256 回のループは1回として数える)"
   [t]
-  (let [evs (polysted/expand-track {:events (polysted-edit/records->events (:recs t))})]
+  (let [evs (polysted.mml/expand-track {:events (polysted.edit/records->events (:recs t))})]
     {:steps (count (:recs t))
      :total-st (reduce + (map #(:st % 0) (:events evs)))}))
 
@@ -955,13 +950,13 @@
 (defn ->song [s]
   (let [{:keys [tempo tracks] :as song} (:song s)
         fix (fn [e] (if (= :tempo (:type e))
-                      (assoc e :value (polysted-rcp/tempo-bpm tempo (:raw e)))
+                      (assoc e :value (polysted.rcp/tempo-bpm tempo (:raw e)))
                       e))
         ;; ミュートだけ除く。リズムトラックも鳴らす (原作の RHY は演奏に影響しない)。
-        ;; K#+ (:key-shift) と ST+ (:st-shift) は polysted/->sequence が反映する
+        ;; K#+ (:key-shift) と ST+ (:st-shift) は polysted.mml/->sequence が反映する
         tracks (->> tracks
                     (remove :mute?)
-                    (mapv #(assoc % :events (mapv fix (polysted-rcp/records->events-ex (:recs %) {:user-exc (:user-exc song) :ch (:ch %)})))))
+                    (mapv #(assoc % :events (mapv fix (polysted.rcp/records->events-ex (:recs %) {:user-exc (:user-exc song) :ch (:ch %)})))))
         tracks (if (seq tracks)
                  (update-in tracks [0 :events] #(into [{:type :tempo :st 0 :value tempo}] %))
                  tracks)]
@@ -1063,7 +1058,7 @@
   "小節 meas (1始まり) の先頭から ST 経過 st の位置の行 (EDITS.C meas_add + sttm_ad)。
    その小節が無ければ末尾 (END)"
   [recs meas st]
-  (if-let [start (polysted-edit/meas-add recs meas)]
+  (if-let [start (polysted.edit/meas-add recs meas)]
     (loop [p start]
       (if (or (>= p (count recs)) (>= (measure-st recs p) st) (>= ((recs p) 0) 0xFC))
         p
@@ -1080,7 +1075,7 @@
       s
       (let [recs (cur-recs s)
             p    (:pos s)
-            meas (polysted-edit/meas-no recs p)
+            meas (polysted.edit/meas-no recs p)
             st   (measure-st recs p)
             s2   (select-track s t)]
         (assoc s2 :pos (track-pos-at (cur-recs s2) meas st))))))
@@ -1117,8 +1112,8 @@
                                   ;; 原作の表記: 小節線 "--------" + 小節の ST 合計、小節複写 "========"
                                   :text (case (int b0)
                                           0xFD (str "-------- MEAS END  ST=" (measure-st recs i))
-                                          0xFC (str "======== SAME MEAS " (inc (polysted-edit/same-ref r)))
-                                          0x98 (let [[data _] (polysted-rcp/track-exclusive-data recs i)]
+                                          0xFC (str "======== SAME MEAS " (inc (polysted.edit/same-ref r)))
+                                          0x98 (let [[data _] (polysted.rcp/track-exclusive-data recs i)]
                                                  (str "Tr.Exclu  " (exc-hex data)))
                                           0xF7 (str "          " (exc-hex (take-while #(not= % 0xF7) [b2 b3])))
                                           0xF9 "[ REPEAT"
@@ -1209,7 +1204,7 @@
   "拡張子で読み分ける: .mid/.midi/.smf → SMF、それ以外 → RCP/R36/G36 (見出しで判定)。=> {:song 曲 :warnings [...]}"
   [path]
   (if (smf-path? path)
-    (polysted-smf/read-smf path)
+    (polysted.smf/read-smf path)
     (let [song (song-from-rcp path)]
       {:song (dissoc song :load-warnings) :warnings (vec (:load-warnings song))})))
 
@@ -1224,7 +1219,7 @@
 (defn load!
   "EDN の曲を読み込む。以後 (s/save!) で同じファイルに保存できる。undo 履歴は消える。"
   [path]
-  (reset! S (assoc (new-session (polysted-edn/load-song path)) :file path))
+  (reset! S (assoc (new-session (polysted.edn/load-song path)) :file path))
   (show))
 
 (defn save!
@@ -1233,7 +1228,7 @@
         (save! path)
         (throw (ex-info "保存先が未設定です。(s/save! \"x.edn\") で指定してください" {}))))
   ([path]
-   (polysted-edn/save-song! (:song @S) path)
+   (polysted.edn/save-song! (:song @S) path)
    (swap! S assoc :file path)
    (println "saved" path)
    :saved))
@@ -1247,7 +1242,7 @@
 (defn save-rcp!
   "曲を RCP (.rcp) / R36 (.r36) で書き出す"
   [path]
-  (polysted-rcp/write-rcp! (:song @S) path)
+  (polysted.rcp/write-rcp! (:song @S) path)
   (println "wrote" path)
   :saved)
 
@@ -1255,21 +1250,37 @@
   (boolean (re-find #"(?i)\.(rcp|r36)$" (str path))))
 
 (defn save-mid! [path]
-  (polysted/write-mid! (->song @S) path)
+  (polysted.mml/write-mid! (->song @S) path)
   (println "wrote" path))
 
 (defn playing? [] (boolean (some-> @seqr .isRunning)))
 
+(defn open-at-start!
+  "起動時に path を開いて S に入れる (TUI・GUI の -main から)。nil なら空の曲のまま。
+   .edn が無ければ新規 (w でそこに保存)。RCP/R36/G36/.mid の変換の注意はメッセージに出す"
+  [path]
+  (let [lc (some-> path str/lower-case)]
+    (cond
+      (nil? path) nil
+      (str/ends-with? lc ".edn")
+      (if (.exists (java.io.File. ^String path))
+        (reset! S (assoc (new-session (polysted.edn/load-song path)) :file path))
+        (swap! S assoc :file path))
+      :else
+      (let [{:keys [song warnings]} (song-from-file path)]
+        (reset! S (cond-> (new-session song)
+                    (seq warnings) (assoc :msg (str/join " / " warnings))))))))
+
 (defn tui
-  "TUI を起動する (polysted_tui_base.clj・polysted_tui_screens.clj・polysted_tui.clj を先に load-file しておく)。終了すると REPL に戻る。"
+  "TUI を起動する (polysted.tui は初回に読み込まれる)。終了すると REPL に戻る。"
   []
-  ((requiring-resolve 'polysted-tui/run!)))
+  ((requiring-resolve 'polysted.tui/run!)))
 
 (defn gui
-  "GUI (Swing のウィンドウ) を開く (polysted_tui_base.clj・polysted_tui_screens.clj・polysted_tui.clj・polysted_gui.clj を先に load-file しておく)。
+  "GUI (Swing のウィンドウ) を開く (polysted.gui は初回に読み込まれる)。
    REPL はそのまま使え、S は GUI と共有する (REPL で変えたら GUI のウィンドウをクリックすると反映)"
   []
-  ((requiring-resolve 'polysted-gui/run!)))
+  ((requiring-resolve 'polysted.gui/run!)))
 
 (defn stop! []
   (when-let [sr @seqr]
@@ -1282,8 +1293,8 @@
    原作のポイントプレイ (カーソルのある小節から演奏) の開始位置"
   [s]
   (let [recs (cur-recs s)
-        start (or (polysted-edit/meas-add recs (polysted-edit/meas-no recs (:pos s))) (count recs))
-        evs (polysted/expand-track {:events (polysted-edit/records->events (subvec recs 0 start))})]
+        start (or (polysted.edit/meas-add recs (polysted.edit/meas-no recs (:pos s))) (count recs))
+        evs (polysted.mml/expand-track {:events (polysted.edit/records->events (subvec recs 0 start))})]
     (reduce + (map #(:st % 0) (:events evs)))))
 
 (defn play!
@@ -1292,7 +1303,7 @@
   ([tick] (play! tick @S))
   ([tick s]
   (stop!)
-  (let [sq (polysted/->sequence (->song s))
+  (let [sq (polysted.mml/->sequence (->song s))
         sr (MidiSystem/getSequencer)]
     (.open sr)
     (.setSequence sr sq)
@@ -1312,10 +1323,10 @@
   "カーソルのある小節の [開始 tick 終了 tick] (今のトラック。小節の長さは小節線までの ST をリピート込みで数える)"
   [s]
   (let [recs (cur-recs s)
-        m    (polysted-edit/meas-no recs (:pos s))
-        a    (or (polysted-edit/meas-add recs m) (count recs))
-        b    (or (polysted-edit/meas-add recs (inc m)) (count recs))
-        len  (fn [rs] (reduce + (map #(:st % 0) (:events (polysted/expand-track {:events (polysted-edit/records->events rs)})))))
+        m    (polysted.edit/meas-no recs (:pos s))
+        a    (or (polysted.edit/meas-add recs m) (count recs))
+        b    (or (polysted.edit/meas-add recs (inc m)) (count recs))
+        len  (fn [rs] (reduce + (map #(:st % 0) (:events (polysted.mml/expand-track {:events (polysted.edit/records->events rs)})))))
         t0   (len (subvec recs 0 a))]
     [t0 (+ t0 (len (subvec recs a b)))]))
 
@@ -1338,7 +1349,7 @@
           :playing)))))
 
 ;; ============================================================
-;; レコーディング (原作 RECORD.C real_record。変換は polysted_record.clj)
+;; レコーディング (原作 RECORD.C real_record。変換は src/polysted/record.clj)
 ;; ============================================================
 ;; 録音中: ほかのトラック (MODE が Play か Mix) とメトロノームを演奏し、MIDI 入力をシーケンサの tick 付きで貯める。
 ;; 1 小節目から始めるときは 2 小節のカウント (原作どおり)。止めたら MODE が Mix・Rec のトラックへ書き込む。
@@ -1394,8 +1405,8 @@
       :else
       (let [bar-len (bar-length s)
             count-in (if (= 1 top) (* 2 bar-len) 0)
-            start (if (= 1 top) 0 (measure-tick (assoc s :pos (or (polysted-edit/meas-add (cur-recs s) top) (count (cur-recs s))))))
-            sq (polysted/->sequence (->song s))
+            start (if (= 1 top) 0 (measure-tick (assoc s :pos (or (polysted.edit/meas-add (cur-recs s) top) (count (cur-recs s))))))
+            sq (polysted.mml/->sequence (->song s))
             _ (when (pos? count-in)                            ; カウントの 2 小節ぶん全体を後ろへ
                 (doseq [^javax.sound.midi.Track tr (.getTracks sq) i (range (.size tr))]
                   (let [e (.get tr i)] (when (pos? (.getTick e)) (.setTick e (+ (.getTick e) count-in))))))
@@ -1437,10 +1448,10 @@
           song (reduce (fn [song i]
                          (let [t (get-in song [:tracks i])
                                ch (if one? (dec (or (:ch opts) 1)) (bit-and (dec (or (:ch t) 1)) 15))
-                               nw (polysted-record/midi->records evs {:ch ch :bar-len bar-len :end (- stop-tick offset)
+                               nw (polysted.record/midi->records evs {:ch ch :bar-len bar-len :end (- stop-tick offset)
                                                                   :sysex? (or one? (zero? ch))})]
                            (update-in song [:tracks i :recs]
-                                      #(polysted-record/apply-recording (vec %) nw {:mix? (= 2 (track-mode t)) :top (:top opts 1)
+                                      #(polysted.record/apply-recording (vec %) nw {:mix? (= 2 (track-mode t)) :top (:top opts 1)
                                                                                :btm (:btm opts 999) :bar-len bar-len :ch (:ch t)}))))
                        (:song s) trs)]
       (-> s push-undo (assoc :song song)
@@ -1593,19 +1604,19 @@
                        [0xFD 0 0 0 0 0] [0xFC 0 1 0 0x30 0] [0xF9 0 0 0 0 0] [62 64 48 0 46 0] [0xF8 0 2 0 0 0] [0xFD 0 0 0 0 0]
                        [0xFE 0 0 0 0 0]]
                  trk (byte-array (+ 46 (* 6 (count rows))))
-                 _ (do (put-s! hdr 0 polysted-rcp/g36-id) (put-s! hdr 0x20 "G36 TEST")
+                 _ (do (put-s! hdr 0 polysted.rcp/g36-id) (put-s! hdr 0x20 "G36 TEST")
                        (put! hdr 0x208 1) (put! hdr 0x20A 48) (put! hdr 0x20C 120) (put! hdr 0x20E 4) (put! hdr 0x20F 4)
                        (put-s! hdr 0x318 "BD") (put! hdr (+ 0x318 14) 36) (put! hdr (+ 0x318 15) 1)
                        (put-s! hdr 0xB18 "GS") (doseq [[i v] (map-indexed vector (concat [0x41 0x10] (repeat 23 0xF7)))] (put! hdr (+ 0xB18 23 i) v))
                        (put! trk 0 (alength trk)) (put! trk 4 1) (put! trk 6 17) (put! trk 8 0xFE) (put-s! trk 10 "TRK")
                        (doseq [[k r] (map-indexed vector rows) [j v] (map-indexed vector r)] (put! trk (+ 46 (* 6 k) j) v)))
                  bs (byte-array (concat hdr trk))
-                 song (polysted-rcp/read-g36-bytes bs)
+                 song (polysted.rcp/read-g36-bytes bs)
                  t (first (:tracks song))]
              [(:recs t)
               [(:title song) (:timebase song) (:tempo song) (:time-sig song) (:ch t) (:st-shift t) (:comment t)
                (first (:rhythm-assign song)) (update (first (:user-exc song)) 1 #(vec (take 3 %)))
-               (count (:load-warnings song)) (polysted-rcp/g36-bytes? (byte-array 600))]]))
+               (count (:load-warnings song)) (polysted.rcp/g36-bytes? (byte-array 600))]]))
     (check "鳴らない MODE の案内: Play・Mix は nil、Mute・Rec は案内"
            [nil "TR1 は MODE が Mute なので再生で鳴りません (Tab のトラック設定で MODE を Play か Mix に)" nil
             "TR1 は MODE が Rec なので再生で鳴りません (Tab のトラック設定で MODE を Play か Mix に)"]
@@ -1716,16 +1727,16 @@
                        (insert-same 1) (insert-ctrl "M" 0 3)
                        (assoc-in [:song :title] "テスト"))
                  f (java.io.File/createTempFile "polysted" ".rcp")
-                 _ (polysted-rcp/write-rcp! (:song s) (.getPath f))
+                 _ (polysted.rcp/write-rcp! (:song s) (.getPath f))
                  s2 (song-from-rcp (.getPath f))]
              (.delete f)
              [(count (:tracks s2)) (:recs (first (:tracks s2)))
               (= (:recs (first (:tracks s2)))
-                 (vec (butlast (polysted-rcp/normalize-track-records (cur-recs s)))))
+                 (vec (butlast (polysted.rcp/normalize-track-records (cur-recs s)))))
               ((juxt :rhythm? :key-shift) ((:tracks s2) 9)) (:title s2) (:ch (first (:tracks s2)))]))
     (check "R36: 拡張子 .r36 なら 36 トラック、ヘッダのトラック数も 36"
            [36 36]
-           (let [b (polysted-rcp/song->rcp-bytes (:song (new-session)) true)
+           (let [b (polysted.rcp/song->rcp-bytes (:song (new-session)) true)
                  f (java.io.File/createTempFile "polysted" ".r36")]
              (java.nio.file.Files/write (.toPath f) ^bytes b (into-array java.nio.file.OpenOption []))
              (let [r (count (:tracks (song-from-rcp (.getPath f))))]
@@ -1735,8 +1746,8 @@
            [120 [[60 24 22 64] [62 24 22 64] [64 24 22 64] [0xEB 0 7 100] [65 48 46 100]]]
            (let [s (-> (new-session) (insert-mml "l8 c d e") (insert-ctrl "V" 0 100) (insert-mml "v100 l4 f"))
                  f (java.io.File/createTempFile "polysted" ".mid")
-                 _ (polysted/write-mid! (->song s) (.getPath f))
-                 {:keys [song]} (polysted-smf/read-smf (.getPath f))]
+                 _ (polysted.mml/write-mid! (->song s) (.getPath f))
+                 {:keys [song]} (polysted.smf/read-smf (.getPath f))]
              (.delete f)
              [(:tempo song) (let [r (:recs (first (:tracks song)))] (conj (vec (butlast r)) (assoc (peek r) 1 48)))]))
     (check "ノート操作: 直線 (undo 1回)、値の検査"
@@ -1780,7 +1791,7 @@
                        (add-track 2) (insert-recs (vec (repeat 4 [62 12 10 64]))) (select-track 0))
                  s1 (repeat-compress s)
                  s2 (repeat-compress s true)
-                 play (fn [s] (->> (->song s) :tracks (mapcat #(polysted/track->abs (polysted/expand-track %)))
+                 play (fn [s] (->> (->song s) :tracks (mapcat #(polysted.mml/track->abs (polysted.mml/expand-track %)))
                                    (filter #(= :note (:kind %))) (map (juxt :tick :key)) sort))]
              [(cur-recs s1) [[48 96 94 64]] (count (filter #(= 0xF9 (% 0)) (mapcat :recs (get-in s2 [:song :tracks]))))
               (= (play s) (play s2))]))
@@ -1797,7 +1808,7 @@
               (:time-sig (:song (set-song-field s :beat "3/4"))) (:msg (set-song-field s :tempo "300"))]))
     (check "再生: K#+ でキーをずらす (OFF・範囲外は鳴らさない)、ST+ で時間をずらす、リズムトラックも鳴らす"
            [[[0 55] [48 121]] [[0 65]] [[10 60]] [[0 60]] 2 48]
-           (let [notes (fn [s] (->> (polysted/->sequence (->song s)) .getTracks
+           (let [notes (fn [s] (->> (polysted.mml/->sequence (->song s)) .getTracks
                                     (mapcat (fn [^javax.sound.midi.Track t] (for [i (range (.size t)) :let [e (.get t i) m (.getMessage e)]
                                                                                :when (and (instance? javax.sound.midi.ShortMessage m)
                                                                                           (= javax.sound.midi.ShortMessage/NOTE_ON (.getCommand ^javax.sound.midi.ShortMessage m)))]
@@ -1822,18 +1833,18 @@
             "Tr.Exclu  41 10 16 12 cs 10 00 01 64 ss F7"]
            (let [recs [[0x98 0 0 0] [0xF7 0 0x41 0x10] [0xF7 0 0x16 0x12] [0xF7 0 0x83 0x10]
                        [0xF7 0 0x00 0x01] [0xF7 0 0x64 0x84] [0xF7 0 0xF7 0xF7]]
-                 ev (polysted-rcp/records->events-ex
+                 ev (polysted.rcp/records->events-ex
                      (into recs [[0xDF 0 0x10 0x42] [0xDD 0 0x40 0x01] [0xDE 0 0x30 0x05] [0x90 0 5 0x40]])
                      {:user-exc [["" [0x43 0x80 0x81 0xF7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]]] :ch 1})
                  sx (filterv #(= :sysex (:type %)) ev)]
-             [(polysted-rcp/exclusive-bytes [0x41 0x10 0x16 0x12 0x83 0x10 0x00 0x01 0x64 0x84 0xF7] {})
+             [(polysted.rcp/exclusive-bytes [0x41 0x10 0x16 0x12 0x83 0x10 0x00 0x01 0x64 0x84 0xF7] {})
               (:bytes (sx 0)) (:bytes (sx 1)) (:bytes (sx 2))
               (:text (first (:rows (table-view (-> (new-session) (insert-recs recs) (goto-pos 0)) 3))))]))
     (check "エクスクルーシブを SMF に書き出す (SysexMessage)"
            [[0xF0 0x41 0x10 0x16 0x12 0x10 0x00 0x01 0x64 0x0B 0xF7]]
            (let [s (-> (new-session) (insert-recs [[0x98 0 0 0] [0xF7 0 0x41 0x10] [0xF7 0 0x16 0x12] [0xF7 0 0x83 0x10]
                                                    [0xF7 0 0x00 0x01] [0xF7 0 0x64 0x84] [0xF7 0 0xF7 0xF7] [60 48 46 64]]))]
-             (vec (for [^javax.sound.midi.Track t (.getTracks (polysted/->sequence (->song s)))
+             (vec (for [^javax.sound.midi.Track t (.getTracks (polysted.mml/->sequence (->song s)))
                         i (range (.size t))
                         :let [m (.getMessage (.get t i))]
                         :when (instance? javax.sound.midi.SysexMessage m)]
@@ -1842,8 +1853,8 @@
            [[0x98 0 0 0] [0xF7 0 0x41 0x10] [0xF7 0 0x42 0x12] [0xF7 0 0xF7 0xF7]]
            (let [s (-> (new-session) (insert-recs [[0x98 0 0 0] [0xF7 0 0x41 0x10] [0xF7 0 0x42 0x12] [0xF7 0 0xF7 0xF7] [60 48 46 64]]))
                  f (java.io.File/createTempFile "polysted" ".mid")
-                 _ (polysted/write-mid! (->song s) (.getPath f))
-                 song (:song (polysted-smf/read-smf (.getPath f)))]
+                 _ (polysted.mml/write-mid! (->song s) (.getPath f))
+                 song (:song (polysted.smf/read-smf (.getPath f)))]
              (.delete f)
              (vec (take 4 (:recs (first (:tracks song)))))))
     (check "エクスクルーシブの入力: 新規挿入・書き換え (undo 1回)、不正な入力、ユーザーエクスクルーシブの表"
@@ -1889,6 +1900,5 @@
     (check "EDN: セッションの曲を保存形式に通しても同じ"
            (:song (-> (new-session) (insert-mml "o5 c8") (insert-notes "E G")))
            (-> (new-session) (insert-mml "o5 c8") (insert-notes "E G")
-               :song polysted-edn/song->edn-str polysted-edn/edn-str->song))))
+               :song polysted.edn/song->edn-str polysted.edn/edn-str->song))))
 
-(run-checks)

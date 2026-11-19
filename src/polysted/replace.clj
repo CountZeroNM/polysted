@@ -1,4 +1,4 @@
-;; polysted_replace.clj — 置換・削除・検索マクロ (原作の F3 / Shift+F3 / F4・F5)
+;; src/polysted/replace.clj — 置換・削除・検索マクロ (原作の F3 / Shift+F3 / F4・F5)
 ;;
 ;; EDITS.C replace・rep_match・tai_check の移植。指定の書式 (マニュアル STED2.MAN の F3):
 ;;   検索{:置換}{,検索{:置換}…}   欄は NOTE(コード) / ST / GT / VEL の順。'|' で区切って複数を順に実行
@@ -10,10 +10,9 @@
 ;;   先頭の % は「元のデータを残し、同じ時刻に変換後を足す」、削除で先頭の @ は「消さずに同じ ST の休符にする」
 ;; 未対応 (エラーにする): $ の文字列検索、ST 欄の + - (和音の音数)、/CM (コメント)
 ;;
-;; 読み込み: (load-file "polysted_replace.clj")  ※ロード時に run-checks が走る
-(ns polysted-replace
+(ns polysted.replace
   (:require [clojure.string :as str]
-            [polysted-notename]))
+            [polysted.notename]))
 
 ;; ------------------------------------------------------------
 ;; 文字列 → 数
@@ -31,7 +30,7 @@
 (defn- ctc
   "音名かキー番号 → キー (0〜127)。基準のオクターブは 4 (ctc の da=60)"
   [s]
-  (polysted-notename/parse-token (str/trim s) {:last-key 60 :key-sig 0}))
+  (polysted.notename/parse-token (str/trim s) {:last-key 60 :key-sig 0}))
 
 ;; ------------------------------------------------------------
 ;; 指定の解析
@@ -213,7 +212,7 @@
               (recur (if nxt (subs s1 nxt) "") cd))
             (let [s (str/replace s #"^\^" "")]
               (if (and (zero? j) (< a 128))
-                (or (polysted-notename/parse-token (str/trim s) {:last-key 60 :key-sig 0}) cd)
+                (or (polysted.notename/parse-token (str/trim s) {:last-key 60 :key-sig 0}) cd)
                 (cond-> (str-val s) (and (#{0xEC 0xE2} a) (= j 2) (= 1 prog-min)) dec)))))))))
 
 (defn- clamp-field [a j cd]
@@ -343,8 +342,7 @@
          ["未対応・不正はエラー" [(boolean (:error (parse-specs "$C 4" opts))) (boolean (:error (parse-specs "/X" opts)))] [true true]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-replace: OK " (count checks) "件"))
+      (println (str "polysted.replace: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

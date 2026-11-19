@@ -1,6 +1,6 @@
-;; polysted.clj  --  STED2風 MML -> イベント列 -> SMF(.mid) 書き出し (最小版・動作未確認)
-;; 使い方:  (load-file "polysted.clj")   ※末尾のデモが test.mid を書き出します
-(ns polysted
+;; src/polysted/mml.clj  --  STED2風 MML -> イベント列 -> SMF(.mid) 書き出し (最小版・動作未確認)
+;; 使い方:  (require 'polysted.mml)   (polysted.mml/write-demo! "test.mid") でデモを書き出す
+(ns polysted.mml
   (:require [clojure.string :as str])
   (:import (javax.sound.midi Sequence MidiSystem ShortMessage MetaMessage MidiEvent SysexMessage)
            (java.io File)))
@@ -229,7 +229,11 @@
                             {:type :cc :st 0 :ctl 7 :value 100}]
                            (parse-mml "l8 o4 [cdefgab<c]2" {}))}]})
 
-(write-mid! demo "test.mid")
-(println "wrote test.mid  (note events:"
-         (count (filter #(= :note (:kind %)) (track->abs (expand-track (first (:tracks demo))))))
-         ")")
+(defn write-demo!
+  "デモの曲を SMF に書き出す (以前はロード時に test.mid を書き出していた)"
+  ([] (write-demo! "test.mid"))
+  ([path]
+   (write-mid! demo path)
+   (println "wrote" path " (note events:"
+            (count (filter #(= :note (:kind %)) (track->abs (expand-track (first (:tracks demo))))))
+            ")")))

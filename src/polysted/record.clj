@@ -1,4 +1,4 @@
-;; polysted_record.clj — レコーディング (原作 RECORD.C) の変換。純粋関数のみ。MIDI 入力と演奏は polysted_session.clj。
+;; src/polysted/record.clj — レコーディング (原作 RECORD.C) の変換。純粋関数のみ。MIDI 入力と演奏は src/polysted/session.clj。
 ;;
 ;; 原作で確認したこと (RECORD.C real_record・proc_next・flash・ent_dat・proc_excl・rec_conv・rec_ext・meas_adjust):
 ;;   - 録音中の MIDI 入力を時刻付きで貯め、終わってから 4 バイトのレコードへ変換する。
@@ -24,9 +24,8 @@
 ;;   - GT が 240 を超える音: 原作は最初に GT 255 の音を入れ、さらに同じ時刻からつなぎの音を入れる (同じ音が
 ;;     2 つ重なる)。ここではつなぎの音だけにする。
 ;;   - フィルタ (rfilt) は無し (全部入れる)。
-;; 読み込み: (load-file "polysted_record.clj")  ※ polysted_edit.clj の後、polysted_session.clj の前
-(ns polysted-record
-  (:require [polysted-edit]))
+(ns polysted.record
+  (:require [polysted.edit]))
 
 (defn- note-off? [[s k v] ch key]
   (and (= ch (bit-and s 0x0F)) (= k key)
@@ -119,18 +118,18 @@
   "小節 top の頭までレコードが足りなければ、休符と小節線で埋める (meas_adjust)。=> [レコード 小節 top の頭の位置]"
   [recs top bar-len]
   (let [recs (vec recs)]
-    (if-let [ad (and (> top 1) (polysted-edit/meas-add recs top))]
+    (if-let [ad (and (> top 1) (polysted.edit/meas-add recs top))]
       [recs ad]
       (if (<= top 1)
         [recs 0]
         (let [n (count recs)
               last-bar (or (last (filter #(> ((recs %) 0) 0xFB) (range n))) -1)
               partial (reduce + (map #(if (< ((recs %) 0) 0xF0) ((recs %) 1) 0) (range (inc last-bar) n)))
-              lft (- top (polysted-edit/meas-no recs n))
+              lft (- top (polysted.edit/meas-no recs n))
               [pad lft] (if (pos? partial) [(rest-and-bar (max 1 (- bar-len partial))) (dec lft)] [[] lft])
               pad (into pad (mapcat (fn [_] (rest-and-bar bar-len)) (range (max 0 lft))))
-              recs (polysted-edit/renumber-measures (into recs pad))]
-          [recs (or (polysted-edit/meas-add recs top) (count recs))])))))
+              recs (polysted.edit/renumber-measures (into recs pad))]
+          [recs (or (polysted.edit/meas-add recs top) (count recs))])))))
 
 (defn apply-recording
   "録音したレコードをトラックのレコードに書き込む (rec_ext)。opts: {:mix? MODE が Mix か :top 開始小節 :btm 終わりの小節
@@ -138,11 +137,11 @@
   [recs new-recs {:keys [mix? top btm bar-len ch]}]
   (let [[recs ad] (pad-to-measure recs (or top 1) bar-len)
         merged (if (and mix? (seq recs))
-                 (into (subvec recs 0 ad) (polysted-edit/mix-records (subvec recs ad) new-recs))
-                 (let [ad2 (or (polysted-edit/meas-add recs (inc (or btm 999))) (count recs))]
+                 (into (subvec recs 0 ad) (polysted.edit/mix-records (subvec recs ad) new-recs))
+                 (let [ad2 (or (polysted.edit/meas-add recs (inc (or btm 999))) (count recs))]
                    (vec (concat (subvec recs 0 ad) new-recs (subvec recs (max ad ad2))))))
-        {r :recs} (polysted-edit/tie-compress merged ch ad (count merged))]
-    (polysted-edit/renumber-measures r)))
+        {r :recs} (polysted.edit/tie-compress merged ch ad (count merged))]
+    (polysted.edit/renumber-measures r)))
 
 ;; ---- 簡易チェック (期待値は RECORD.C を手で追って求めた) ----
 (defn run-checks []
@@ -174,8 +173,7 @@
            [[60 48 46 64] [0xFD 0 0 1] [0 48 0 0] [0xFD 0 0 2] [67 48 46 100] [0xFD 0 0 3]]]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-record: OK " (count checks) "件"))
+      (println (str "polysted.record: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

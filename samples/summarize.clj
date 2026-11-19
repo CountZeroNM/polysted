@@ -1,11 +1,10 @@
 ;; summarize.clj -- サンプルRCPの中身を要約する診断スクリプト
-;; プロジェクトのルート(polysted.clj がある場所)から実行:
+;; プロジェクトのルート (deps.edn がある場所) から実行。RCP は samples/ に置く (同梱していない):
 ;;   clojure -M samples/summarize.clj
-(load-file "polysted.clj")
-(load-file "polysted_rcp.clj")
+(require 'polysted.rcp)
 
 (defn summarize [path]
-  (let [s   (polysted-rcp/read-rcp path)
+  (let [s   (polysted.rcp/read-rcp path)
         evs (mapcat :events (:tracks s))]
     {:title (:title s)
      :timebase (:timebase s)

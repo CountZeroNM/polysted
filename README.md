@@ -17,7 +17,7 @@ STED2 の「**4 バイト固定長レコード (`[b0 b1 b2 b3]`)**」による�
 
 ## 目次
 
-- [はじめての操作（5 分ガイド）](#はじめての操作5-分ガイド)（ウィンドウで使うなら `clojure -M gui.clj`）
+- [はじめての操作（5 分ガイド）](#はじめての操作5-分ガイド)（ウィンドウで使うなら `clojure -M:gui`）
 - [名前について](#名前について--polysted) / [背景と設計思想](#背景と設計思想) / [ファイル構成](#ファイル構成) / [必要環境](#必要環境)
 - [クイックスタート](#クイックスタート)（REPL・TUI・音名入力・RCP・SMF）
   - TUI: [トラック設定画面](#トラック設定画面tab-で切り替え原作のメイン画面-trkset) / [リズムパターン編集](#リズムパターン編集ctrl-g原作のリズムトラックエディタ) / [直接入力モード](#直接入力モード-で切り替え)
@@ -30,7 +30,7 @@ STED2 の「**4 バイト固定長レコード (`[b0 b1 b2 b3]`)**」による�
 
 ```bash
 cd polysted
-clojure -M tui.clj my_song.edn     # 新しい曲を TUI で開く（保存先は my_song.edn）
+clojure -M:tui my_song.edn         # 新しい曲を TUI で開く（保存先は my_song.edn）
 ```
 
 1. **音を入れる**: `n` を押して `C4 E G C5` と打ち、`Enter`。カーソル位置に 4 音が入ります（`m` なら MML: `l8 cdefgab<c`）。
@@ -61,12 +61,12 @@ STED2 のトラックデータは、4バイトの整数ベクタ `[b0 b1 b2 b3]`
 ```mermaid
 flowchart TD
     subgraph UI ["ユーザーインターフェース層"]
-        REPL["REPL層 (polysted-session)"]
-        TUI["TUI層 (polysted-tui)"]
-        GUI["GUI層 (polysted-gui)"]
+        REPL["REPL層 (polysted.session)"]
+        TUI["TUI層 (polysted.tui)"]
+        GUI["GUI層 (polysted.gui)"]
     end
 
-    subgraph Core ["純粋関数コア (polysted-session / polysted-edit)"]
+    subgraph Core ["純粋関数コア (polysted.session / polysted.edit)"]
         Dispatch["dispatch / コマンド表"]
         Funcs["(state, args...) -> state<br/>insert / delete / optimize / undo / redo"]
         View["view 関数<br/>(state) -> {:header ... :rows [...]}"]
@@ -74,8 +74,8 @@ flowchart TD
 
     subgraph Engine ["入出力・エンジン層"]
         MML["MML パーサ (polysted)"]
-        NoteName["音名パーサ (polysted-notename)"]
-        RCP["RCP/R36 解析 (polysted-rcp)"]
+        NoteName["音名パーサ (polysted.notename)"]
+        RCP["RCP/R36 解析 (polysted.rcp)"]
         JavaSound["Java Sound API<br/>(即時再生 / SMF書き出し)"]
     end
 
@@ -98,31 +98,32 @@ flowchart TD
 
 ## ファイル構成
 
+ソースは `src/polysted/` にあり、ファイル `src/polysted/xxx.clj` が名前空間 `polysted.xxx` です（`tui_base.clj` は `polysted.tui-base`）。
+
 | ファイル | 役割 |
 |---|---|
-| [`polysted.clj`](polysted.clj) | MML パーサ、調号シフト、SAME/ループ展開、絶対 tick 化、SMF (`.mid`) 書き出し |
-| [`polysted_rcp.clj`](polysted_rcp.clj) | RCP/R36 の読み込み（4バイトレコードとヘッダの全項目）と書き出し (`write-rcp!`)、イベント変換、SMF 直接出力 (`rcp->mid!`) |
-| [`polysted_edit.clj`](polysted_edit.clj) | レコード編集コア（挿入・削除・置換）、タイ圧縮 (`tai_compres`)、トラック最適化 (`trk_opt_sub`) |
-| [`polysted_edn.clj`](polysted_edn.clj) | 曲データの EDN 保存・読み込み（1行1レコード、形式・レコードの検査付き） |
-| [`polysted_replace.clj`](polysted_replace.clj) | 置換・指定削除・検索マクロ（原作の F3 / Shift+F3 / F4・F5 の書式） |
-| [`polysted_rhythm.clj`](polysted_rhythm.clj) | リズムパターン編集の変換（小節 ⇔ ステップ×楽器の格子、原作 REDIT.C の rtopat / pattor） |
-| [`polysted_ctrl.clj`](polysted_ctrl.clj) | コントローラ記号・MIDI チャンネル・調・エクスクルーシブなどの値の解釈と表示（セッション状態を使わない純粋関数。`polysted_session.clj` から分割） |
-| [`polysted_smf.clj`](polysted_smf.clj) | SMF (.mid) の読み込み → レコード形式（チャンネルごとにトラックを分け、PPQ をタイムベースに換算） |
-| [`polysted_session.clj`](polysted_session.clj) | UI 非依存の編集セッションコア、`view` 生成、REPL 対話層、Java Sound 演奏制御 |
-| [`polysted_notename.clj`](polysted_notename.clj) | 音名入力パーサ（STED2 `KEY_SUB.C` の `ctc` 仕様準拠: `C4 E G`, `#`, `+`, `-`, `B`, `N`, `=`, `<`, `>`, `.`, 16進など） |
-| [`polysted_tui_base.clj`](polysted_tui_base.clj) | TUI の土台（端末の入力の解読・UI の状態・画面で共通の小さな関数。純粋関数） |
-| [`polysted_tui_screens.clj`](polysted_tui_screens.clj) | TUI の補助の画面（トラック設定・リズム・ワンタッチ表・USER EXC・エクスクルーシブの表示のキー処理と描画） |
-| [`polysted_tui.clj`](polysted_tui.clj) | TUI 層（キー解読・キー割り当て表・画面の行は純粋関数、端末ループは `run!`） |
+| [`src/polysted/mml.clj`](src/polysted/mml.clj) | `polysted.mml`: MML パーサ、調号シフト、SAME/ループ展開、絶対 tick 化、SMF (`.mid`) 書き出し |
+| [`src/polysted/rcp.clj`](src/polysted/rcp.clj) | RCP/R36 の読み込み（4バイトレコードとヘッダの全項目）と書き出し (`write-rcp!`)、イベント変換、SMF 直接出力 (`rcp->mid!`) |
+| [`src/polysted/edit.clj`](src/polysted/edit.clj) | レコード編集コア（挿入・削除・置換）、タイ圧縮 (`tai_compres`)、トラック最適化 (`trk_opt_sub`) |
+| [`src/polysted/edn.clj`](src/polysted/edn.clj) | 曲データの EDN 保存・読み込み（1行1レコード、形式・レコードの検査付き） |
+| [`src/polysted/replace.clj`](src/polysted/replace.clj) | 置換・指定削除・検索マクロ（原作の F3 / Shift+F3 / F4・F5 の書式） |
+| [`src/polysted/rhythm.clj`](src/polysted/rhythm.clj) | リズムパターン編集の変換（小節 ⇔ ステップ×楽器の格子、原作 REDIT.C の rtopat / pattor） |
+| [`src/polysted/ctrl.clj`](src/polysted/ctrl.clj) | コントローラ記号・MIDI チャンネル・調・エクスクルーシブなどの値の解釈と表示（セッション状態を使わない純粋関数。`src/polysted/session.clj` から分割） |
+| [`src/polysted/smf.clj`](src/polysted/smf.clj) | SMF (.mid) の読み込み → レコード形式（チャンネルごとにトラックを分け、PPQ をタイムベースに換算） |
+| [`src/polysted/session.clj`](src/polysted/session.clj) | UI 非依存の編集セッションコア、`view` 生成、REPL 対話層、Java Sound 演奏制御 |
+| [`src/polysted/notename.clj`](src/polysted/notename.clj) | 音名入力パーサ（STED2 `KEY_SUB.C` の `ctc` 仕様準拠: `C4 E G`, `#`, `+`, `-`, `B`, `N`, `=`, `<`, `>`, `.`, 16進など） |
+| [`src/polysted/tui_base.clj`](src/polysted/tui_base.clj) | TUI の土台（端末の入力の解読・UI の状態・画面で共通の小さな関数。純粋関数） |
+| [`src/polysted/tui_screens.clj`](src/polysted/tui_screens.clj) | TUI の補助の画面（トラック設定・リズム・ワンタッチ表・USER EXC・エクスクルーシブの表示のキー処理と描画） |
+| [`src/polysted/tui.clj`](src/polysted/tui.clj) | TUI 層（キー解読・キー割り当て表・画面の行は純粋関数、端末ループは `run!`） |
 | [`doc/機能目録.md`](doc/機能目録.md) | **機能目録**: 41 の機能ごとに、操作・実装の場所・原作の根拠・Clojure の学習ポイント・章立ての案・改善の候補。改造の地図と連載の章立て案つき |
-| [`polysted_all.clj`](polysted_all.clj) | 全部のファイルを正しい順に読み込む（REPL 用。`(load-file "polysted_all.clj")`） |
-| [`deps.edn`](deps.edn) / [`repl.bb`](repl.bb) | REPL の起動: `clojure -M:polysted`（読み込み + rebel-readline）、`clojure -M:rebel`、`bb repl.bb [--plain]` |
-| [`tui.clj`](tui.clj) | TUI を単体で起動するスクリプト（`clojure -M tui.clj [file]`） |
-| [`polysted_gui.clj`](polysted_gui.clj) | GUI 層（Swing。画面とキー操作は TUI と共通、メニュー・ファイル選択・マウス・ウィンドウの大きさに追従） |
-| [`polysted_visual.clj`](polysted_visual.clj) | コントローラのビジュアルエディットの計算（種類の解釈・点の読み込み・波形・行への書き出し。純粋関数） |
-| [`polysted_score.clj`](polysted_score.clj) | 楽譜表示の計算（音符の種類・高さと臨時記号・要素の並び。純粋関数、原作 SCORE.C） |
-| [`polysted_record.clj`](polysted_record.clj) | レコーディングの変換（MIDI 入力 → レコード、トラックへの書き込み。純粋関数、原作 RECORD.C） |
-| [`polysted_roll.clj`](polysted_roll.clj) | ピアノロールの計算（音符の位置・小節線・クリックの当たり判定・表示範囲。純粋関数） |
-| [`gui.clj`](gui.clj) | GUI を単体で起動するスクリプト（`clojure -M gui.clj [file]`） |
+| [`dev/user.clj`](dev/user.clj) | REPL の user 名前空間（`clojure -M:repl` / `clojure -M:dev` で自動で読み込まれ、`s` が `polysted.session` の別名に） |
+| [`deps.edn`](deps.edn) / [`repl.bb`](repl.bb) | 起動のエイリアス: `clojure -M:tui [file]`・`-M:gui [file]`・`-M:repl`（rebel-readline）・`-M:dev`・`-M:check`、`bb repl.bb [--plain]` |
+| [`src/polysted/check.clj`](src/polysted/check.clj) | 全部の名前空間の簡易チェック（`run-checks`）を順に実行する（`clojure -M:check`、NG があれば終了コード 1） |
+| [`src/polysted/gui.clj`](src/polysted/gui.clj) | GUI 層（Swing。画面とキー操作は TUI と共通、メニュー・ファイル選択・マウス・ウィンドウの大きさに追従） |
+| [`src/polysted/visual.clj`](src/polysted/visual.clj) | コントローラのビジュアルエディットの計算（種類の解釈・点の読み込み・波形・行への書き出し。純粋関数） |
+| [`src/polysted/score.clj`](src/polysted/score.clj) | 楽譜表示の計算（音符の種類・高さと臨時記号・要素の並び。純粋関数、原作 SCORE.C） |
+| [`src/polysted/record.clj`](src/polysted/record.clj) | レコーディングの変換（MIDI 入力 → レコード、トラックへの書き込み。純粋関数、原作 RECORD.C） |
+| [`src/polysted/roll.clj`](src/polysted/roll.clj) | ピアノロールの計算（音符の位置・小節線・クリックの当たり判定・表示範囲。純粋関数） |
 | [`実装状況と仕様.md`](実装状況と仕様.md) | STED2 の C ソースの解析に基づく仕様の調査（【確認】【推測】【設計判断】の区別つき）、実装状況、検証ログ |
 | [`samples/summarize.clj`](samples/summarize.clj) | RCP ファイルの中身を要約する診断スクリプト（サンプルの曲データは同梱していません） |
 | [`doc/original/`](doc/original) | 原作 STED2 のソース公開時の文書（`追悼.DOC`・`STED207M.HIS`。原文と UTF-8 の読み物版） |
@@ -135,7 +136,7 @@ flowchart TD
 
 - **Java**: OpenJDK 17 以上 (OpenJDK 21 推奨)
 - **Clojure CLI**: 1.11 以上
-- **REPL ツール (推奨)**: `rebel-readline`（行編集・補完用: `clojure -M:rebel`）
+- **REPL ツール (推奨)**: `rebel-readline`（行編集・補完用: `clojure -M:repl`。`deps.edn` から自動で取得）
 
 ---
 
@@ -143,45 +144,21 @@ flowchart TD
 
 ### 1. REPL での対話的編集と再生
 
-**いちばん簡単な起動**（全部のファイルを読み込んでから REPL を開きます。`s/` の別名もできます）:
+**起動**（全部の名前空間を読み込んでから REPL を開きます。`s/` が `polysted.session` の別名になります）:
 
 ```bash
-bb repl.bb                 # babashka から。rebel-readline の REPL（clojure -M:polysted と同じ）
-bb repl.bb --plain         # rebel を使わない普通の REPL
-clojure -M:polysted            # babashka を使わない場合
-clojure -M:rebel           # rebel だけ起動して、あとから (load-file "polysted_all.clj")
+clojure -M:repl            # rebel-readline の REPL（行編集・補完）
+clojure -M:dev             # 普通の REPL
+bb repl.bb                 # babashka から（clojure -M:repl と同じ。--plain で clojure -M:dev）
 ```
 
-- `polysted_all.clj` は、全部のファイルを正しい順に読み込む 1 つのファイルです。どの REPL からでも `(load-file "polysted_all.clj")` で使えます（最後に使い方を表示します）。
-- `deps.edn` の `:rebel` / `:polysted` エイリアスは rebel-readline 0.1.4 を使います（初回は取得に少し時間がかかります）。
-- GUI（`polysted_gui.clj`）は画面が使えない環境では読み込みに失敗するので、その場合は警告だけ出して続けます。
-- ChromeOS の Linux では `DISPLAY` が `wayland-0` になっていて Java の画面が開けません。`bb repl.bb` は、`DISPLAY` が X11 の形でなければ `DISPLAY=:0` を付けて起動します（`clojure` を直接使うときは `DISPLAY=:0 clojure -M:polysted` のように付けてください）。
-
-ファイルを 1 つずつ読み込む場合は、次の順です：
+- REPL の user 名前空間は [`dev/user.clj`](dev/user.clj) です（起動時に自動で読み込まれ、最後に使い方を表示します）。
+- `:repl` エイリアスは rebel-readline 0.1.4 を使います（初回は取得に少し時間がかかります）。
+- GUI（`polysted.gui`）は画面が使えない環境では読み込みに失敗するので、その場合は警告だけ出して続けます。
+- ChromeOS の Linux では `DISPLAY` が `wayland-0` になっていて Java の画面が開けません。`bb repl.bb` は、`DISPLAY` が X11 の形でなければ `DISPLAY=:0` を付けて起動します（`clojure` を直接使うときは `DISPLAY=:0 clojure -M:repl` のように付けてください）。
+- ほかの REPL（エディタの nREPL など）からは `(require '[polysted.session :as s])` で使えます（`deps.edn` の `:paths` が `src`）。
 
 ```clojure
-;; 各モジュールの読み込み（ロード時に簡易チェックが走ります）
-(load-file "polysted.clj")
-(load-file "polysted_rcp.clj")
-(load-file "polysted_edit.clj")
-(load-file "polysted_notename.clj")
-(load-file "polysted_edn.clj")
-(load-file "polysted_smf.clj")
-(load-file "polysted_replace.clj")
-(load-file "polysted_rhythm.clj")
-(load-file "polysted_ctrl.clj")
-(load-file "polysted_roll.clj")
-(load-file "polysted_visual.clj")
-(load-file "polysted_score.clj")
-(load-file "polysted_record.clj")
-(load-file "polysted_session.clj")
-(load-file "polysted_tui_base.clj")      ; ここから 3 つは TUI・GUI を使う場合
-(load-file "polysted_tui_screens.clj")
-(load-file "polysted_tui.clj")
-
-;; セッション名前空間の別名定義
-(alias 's 'polysted-session)
-
 ;; 1. MML を入力してトラックに追加
 (s/mml "t120 o4 l8 c d e f g a b < c")
 
@@ -218,14 +195,14 @@ clojure -M:rebel           # rebel だけ起動して、あとから (load-file 
 ターミナルで全画面の編集画面を開きます。REPL と同じセッションを使うので、`q` で抜けると REPL に戻り、続きを `s/show` などで操作できます。
 
 ```bash
-clojure -M tui.clj              # 空の曲で起動
-clojure -M tui.clj song.edn     # EDN を開く（w で同じファイルに保存）
-clojure -M tui.clj song.rcp
-clojure -M tui.clj song.mid     # SMF を開く
+clojure -M:tui                  # 空の曲で起動
+clojure -M:tui song.edn         # EDN を開く（w で同じファイルに保存）
+clojure -M:tui song.rcp
+clojure -M:tui song.mid         # SMF を開く
 ```
 
 ```clojure
-(s/tui)   ; REPL から（polysted_tui.clj をロード済みのとき）
+(s/tui)   ; REPL から
 ```
 
 | キー | 動作 | キー | 動作 |
@@ -438,10 +415,10 @@ Linux/macOS のターミナル（`stty` と `/dev/tty`）が必要で、nREPL �
 ### 2.5 GUI（ウィンドウ）
 
 ```bash
-clojure -M gui.clj my_song.edn     # ウィンドウで開く（.rcp / .r36 / .mid も可）
+clojure -M:gui my_song.edn         # ウィンドウで開く（.rcp / .r36 / .mid も可）
 ```
 
-REPL からは `(load-file "polysted_tui_base.clj") (load-file "polysted_tui_screens.clj") (load-file "polysted_tui.clj") (load-file "polysted_gui.clj") (s/gui)`。REPL の `S` を共有するので、REPL で変えた内容はウィンドウをクリックすると反映されます。
+REPL からは `(s/gui)`。REPL の `S` を共有するので、REPL で変えた内容はウィンドウをクリックすると反映されます。
 
 - **画面とキー操作は TUI と同じ**です（直接入力・トラック設定・リズム画面・`Ctrl-X` のコマンドもすべて使えます）。F キーは端末と違いそのまま届きます。
 - **メニュー**: ファイル（新規・開く `Ctrl-O`・保存 `Ctrl-S`・名前を付けて保存 `Ctrl-Shift-S`・終了 `Ctrl-Q`。ファイル選択ダイアログ付き、拡張子で EDN / RCP / R36 / SMF）、編集（元に戻す `Ctrl-Z`・やり直し `Ctrl-Shift-Z`）、表示（トラック設定・リズム画面）、再生（`F12` で再生 / 停止）、ヘルプ。
@@ -543,7 +520,7 @@ REPL からは `(load-file "polysted_tui_base.clj") (load-file "polysted_tui_scr
   - 新しく作るとき: `Enter` はカーソル位置に行を挿入します（後ろの時刻はずれます。END の位置なら小節線も入れます）。`Shift+Enter` は既存のデータに時刻順に混ぜます（その時間の中にある同じ種類の行は置き換え）。
   - 範囲を編集するとき: ステップを変えていなければ値だけを書き戻し、変えていれば混ぜます。
 
-### 3. 音名入力 (`polysted-notename`) の利用
+### 3. 音名入力 (`polysted.notename`) の利用
 
 STED2 の `ctc` ルーチンに準拠した音名テキストから直接レコードを生成できます：
 
@@ -553,7 +530,7 @@ STED2 の `ctc` ルーチンに準拠した音名テキストから直接レコ�
 (s/n "D E F# X")      ; 無効なトークン X は捨てられ、表示の最終行に「! 無効な音名: X」
 
 ;; パーサ単体で使う場合
-(alias 'nn 'polysted-notename)
+(alias 'nn 'polysted.notename)
 
 ;; 空白またはカンマ区切りの音名列をパース
 (nn/parse-notes "C4 E G B C5" {:st 48 :gt 46 :vel 64})
@@ -585,7 +562,7 @@ SMF (.mid) も `s/open!` で開けます。`(s/open! "x.mid")` のあと `(s/sav
 
 TUI では `w` の保存先に `.rcp` / `.r36` を付けると RCP 形式で保存します。原作と同じく常に 18（または 36）トラック分を書き出し、メモ・リズム割り当て・ユーザーエクスクルーシブなどのヘッダの項目は読み込んだものをそのまま書き戻します。
 
-**RCP v3（.G36、レコンポーザ 3.0 の形式）** も読み込めます（`s/open!`、`clojure -M tui.clj x.g36`、GUI の「開く」。形式はファイルの先頭の見出しで判定します）。原作の STED2 は G36 を読まないので、形式は公開の変換ツール [rcm2smf](https://github.com/shingo45endo/rcm2smf)（MIT ライセンス）のソースで確認しました。STED2 の 4 バイトのレコードに変換して読み込みます:
+**RCP v3（.G36、レコンポーザ 3.0 の形式）** も読み込めます（`s/open!`、`clojure -M:tui x.g36`、GUI の「開く」。形式はファイルの先頭の見出しで判定します）。原作の STED2 は G36 を読まないので、形式は公開の変換ツール [rcm2smf](https://github.com/shingo45endo/rcm2smf)（MIT ライセンス）のソースで確認しました。STED2 の 4 バイトのレコードに変換して読み込みます:
 
 - ST が 255 を超える行は休符で分け、GT が 255 を超える音は 255 にします（メッセージ行に警告）。
 - コメント・エクスクルーシブの続きの行（G36 は 1 行 5 バイト）は 2 バイトずつの行に詰め直します。
@@ -598,7 +575,7 @@ TUI では `w` の保存先に `.rcp` / `.r36` を付けると RCP 形式で保�
 REPL やスクリプトからワンライナーで変換できます：
 
 ```clojure
-(require '[polysted-rcp :as rcp])
+(require '[polysted.rcp :as rcp])
 
 (rcp/rcp->mid! "song.rcp" "out.mid")
 ```
@@ -641,7 +618,7 @@ STED2 の真骨頂である最適化ロジック（`s/opt`）を忠実に再現�
 
 ## 入力記法リファレンス
 
-### 1. 音名直接入力記法 (`polysted-notename`)
+### 1. 音名直接入力記法 (`polysted.notename`)
 STED2 の `ctc` ルーチンに準拠した直感的な音名入力です：
 
 - **音名**: `C`, `D`, `E`, `F`, `G`, `A`, `B`（大文字・小文字両対応）
@@ -665,7 +642,7 @@ STED2 の `ctc` ルーチンに準拠した直感的な音名入力です：
 
 ---
 
-## REPL コマンドリファレンス (`polysted-session`)
+## REPL コマンドリファレンス (`polysted.session`)
 
 | コマンド | 引数例 | 説明 |
 |---|---|---|
@@ -819,14 +796,14 @@ STED2 の画面・マニュアルに出てくる用語です。（　）内は�
 
 詳細は [`実装状況と仕様.md`](実装状況と仕様.md) を参照してください。
 
-- [x] MML パーサ・ループ展開・SAME 展開 (`polysted.clj`)
-- [x] RCP/R36 バイナリ読み込み・SMF 出力 (`polysted_rcp.clj`)
-- [x] レコード編集コア（タイ圧縮・最適化・Undo/Redo） (`polysted_edit.clj`)
-- [x] REPL セッション操作層・Java Sound による即時再生 (`polysted_session.clj`)
-- [x] 音名直接入力パーサ（`KEY_SUB.C` の `ctc` 準拠） (`polysted_notename.clj`)
+- [x] MML パーサ・ループ展開・SAME 展開 (`src/polysted/mml.clj`)
+- [x] RCP/R36 バイナリ読み込み・SMF 出力 (`src/polysted/rcp.clj`)
+- [x] レコード編集コア（タイ圧縮・最適化・Undo/Redo） (`src/polysted/edit.clj`)
+- [x] REPL セッション操作層・Java Sound による即時再生 (`src/polysted/session.clj`)
+- [x] 音名直接入力パーサ（`KEY_SUB.C` の `ctc` 準拠） (`src/polysted/notename.clj`)
 - [x] 音名入力コマンドのセッション統合 (`s/n`)
-- [x] EDN 形式での曲データ保存・読み込み (`polysted_edn.clj`, `s/save!` / `s/load!`)
-- [x] TUI (Terminal User Interface) 層の実装 (`polysted_tui.clj`, `tui.clj`)
+- [x] EDN 形式での曲データ保存・読み込み (`src/polysted/edn.clj`, `s/save!` / `s/load!`)
+- [x] TUI (Terminal User Interface) 層の実装 (`src/polysted/tui.clj`、`clojure -M:tui`)
 - [x] TUI 直接入力モード（STED2 のエディット画面の入力、ワンタッチ入力、小節線 `*`）
 - [x] 直接入力のリピート `[` `]`・SAME `^`（挿入時に後ろの SAME の参照を自動でずらす）
 - [x] 範囲選択・削除・複写・貼り付け・二重化（原作の F6〜F10、SAME の展開と参照の自動修正）
@@ -846,8 +823,8 @@ STED2 の画面・マニュアルに出てくる用語です。（　）内は�
 - [x] エクスクルーシブの入力（`_`、`/` の `U0`〜`U7` `X` `I` `B` `R`、`Ctrl-X uex`）・再生・SMF 書き出し・SMF からの読み込み
 - [x] 再生まわり（テンポ 0xE7 の換算をマニュアルで確認、ST+ / K#+ の反映、リズムトラックも演奏、`P` でカーソルの小節から再生）
 - [x] RCP/R36 書き出し（`s/save-rcp!`、TUI の `w` で `.rcp` / `.r36`）
-- [x] SMF 読み込み（`s/open!` / `clojure -M tui.clj x.mid`）
-- [x] GUI 層（`polysted_gui.clj`、`clojure -M gui.clj`。TUI と画面・キー操作を共有）
+- [x] SMF 読み込み（`s/open!` / `clojure -M:tui x.mid`）
+- [x] GUI 層（`src/polysted/gui.clj`、`clojure -M:gui`。TUI と画面・キー操作を共有）
 - [x] ピアノロール表示（GUI の編集画面の右側、クリックで行へ移動）
 - [x] ピアノロール上での編集（ドラッグで高さ・時刻・長さ、ダブルクリックで追加、右クリックで削除）
 - [x] コントローラのビジュアルエディット（GUI の `V`。トラックエクスクルーシブ・縦の拡大 `Y`・試し再生 `M` も）

@@ -1,14 +1,13 @@
-;; polysted_ctrl.clj — コントローラ・エクスクルーシブ・トラック設定の値の解釈と表示 (セッション状態を使わない純粋関数)
+;; src/polysted/ctrl.clj — コントローラ・エクスクルーシブ・トラック設定の値の解釈と表示 (セッション状態を使わない純粋関数)
 ;;
-;; polysted_session.clj から分けたもの (2026-11-18)。polysted-session は :refer :all で取り込む。
+;; src/polysted/session.clj から分けたもの (2026-11-18)。polysted.session は :refer :all で取り込む。
 ;;   - コントローラの記号 (EDITS.C spc_code)、入力の欄、値の検査、表示 (trk_dis・ctrl_type)
 ;;   - MIDI チャンネル A1〜B16 (chstr / strch)、調の表示と入力 (scale_str)、ST+ / K#+ / RHY の表示
 ;;   - エクスクルーシブの入力の解釈と表示 (gt ve ch cs ss)、リズム割り当ての入力
-;; 読み込み: (load-file "polysted_ctrl.clj")  ※ polysted_notename.clj の後。ロード時に run-checks が走る
-(ns polysted-ctrl
+(ns polysted.ctrl
   (:require [clojure.string :as str]
-            [polysted-rcp]
-            [polysted-notename]))
+            [polysted.rcp]
+            [polysted.notename]))
 
 (def ^:private cc-names
   {0 "BANK MSB" 1 "MODULAT" 2 "BREATH" 4 "FOOT C." 5 "PORTA.TM" 6 "DATA MSB" 7 "VOLUME"
@@ -184,7 +183,7 @@
   (let [[k g & nm] (str/split (str/trim (str text)) #"\s+")
         key (cond (nil? k) nil
                   (#{"0" "OFF" "off"} k) 0
-                  :else (let [v (polysted-notename/parse-token k {:last-key 60 :key-sig 0})] (when (and v (<= 24 v 127)) v)))
+                  :else (let [v (polysted.notename/parse-token k {:last-key 60 :key-sig 0})] (when (and v (<= 24 v 127)) v)))
         gt  (when (and g (re-matches #"\d{1,3}" g)) (Long/parseLong g))]
     (when (and key gt (<= gt 255))
       [key gt (str/join " " nm)])))
@@ -299,7 +298,7 @@
     (when (and r (<= 0x90 (r 0) 0x98))
       (if (= 0x98 (r 0))
         {:title "Track Exclusive View"
-         :data (conj (vec (take-while #(not= % 0xF7) (first (polysted-rcp/track-exclusive-data recs pos)))) 0xF7)}
+         :data (conj (vec (take-while #(not= % 0xF7) (first (polysted.rcp/track-exclusive-data recs pos)))) 0xF7)}
         (let [n (- (r 0) 0x90) [nm d] (get user-exc n ["" []])]
           {:title (str "User Exclusive View [" n "] " nm)
            :data (conj (vec (take-while #(not= % 0xF7) (uex-data d))) 0xF7)})))))
@@ -338,7 +337,7 @@
                                (when dots? (map (fn [row] (str "   " (apply str (map #(if % "##" "..") row)))) (:dots sc))))
             :else nil)))))
 
-;; ---- 簡易チェック (詳しいものは polysted_session.clj の run-checks にある) ----
+;; ---- 簡易チェック (詳しいものは src/polysted/session.clj の run-checks にある) ----
 (defn run-checks []
   (let [checks
         [["MIDI チャンネルの表示と入力" [(ch-str 1) (ch-str 18) (ch-str 0) (parse-ch "B2") (parse-ch "0") (parse-ch "C1")]
@@ -384,17 +383,16 @@
             "00 F0 41 10 45 12 cs 10 00 00 48 69 ss F7" "" " SC-55 DISPLAY (文字)  [Hi]"]]]
          ["REX・RES: 書いて読むと同じ、空の表、形式違い"
           (let [ue (assoc (vec (repeat 8 ["" (vec (repeat 24 0xF7))])) 2 ["GS Reset" (uex-data [0x41 0x10 0x42 0x12 0x40 0x00 0x7F 0x00 0x41])])
-                rex (polysted-rcp/user-exc->rex ue)
-                res (polysted-rcp/entry->res (ue 2))]
-            [(alength rex) (= ue (:user-exc (polysted-rcp/rex->user-exc rex))) (alength res) (= (ue 2) (:entry (polysted-rcp/res->entry res)))
-             (polysted-rcp/rex->user-exc res) (:error (polysted-rcp/res->entry (byte-array 64)))])
+                rex (polysted.rcp/user-exc->rex ue)
+                res (polysted.rcp/entry->res (ue 2))]
+            [(alength rex) (= ue (:user-exc (polysted.rcp/rex->user-exc rex))) (alength res) (= (ue 2) (:entry (polysted.rcp/res->entry res)))
+             (polysted.rcp/rex->user-exc res) (:error (polysted.rcp/res->entry (byte-array 64)))])
           [410 true 64 true {:error "ファイルが壊れています。"} "違うフォーマットのファイルです。"]]
          ["エクスクルーシブの入力と表示" [(parse-exc-data "41 10 cs 40 ss") (exc-hex [0x41 0x83 0x84 0xF7])]
           [[0x41 0x10 0x83 0x40 0x84 0xF7] "41 cs ss F7"]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-ctrl: OK " (count checks) "件"))
+      (println (str "polysted.ctrl: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

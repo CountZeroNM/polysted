@@ -1,10 +1,9 @@
-;; polysted_notename.clj — 音名入力 "C4 E G" → レコード [key ST GT vel]
+;; src/polysted/notename.clj — 音名入力 "C4 E G" → レコード [key ST GT vel]
 ;; 仕様: STED2 KEY_SUB.C の ctc(md 4.5)。純粋関数のみ。
-;; 読み込み: (load-file "polysted_notename.clj")  ※ロード時に run-checks が走る
-;; 使い方:   (polysted-notename/parse-notes "C4 E G" {})
+;; 使い方:   (polysted.notename/parse-notes "C4 E G" {})
 ;;           => {:records [[60 48 46 64] [64 48 46 64] [67 48 46 64]]
 ;;               :last-key 67 :errors []}
-(ns polysted-notename
+(ns polysted.notename
   (:require [clojure.string :as str]))
 
 (def base-semitone {\C 0 \D 2 \E 4 \F 5 \G 7 \A 9 \B 11})
@@ -123,9 +122,8 @@
                               [[60 24 22 100]]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-notename: OK " (count checks) "件"))
+      (println (str "polysted.notename: OK " (count checks) "件"))
       (doseq [[l a e] bad]
         (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

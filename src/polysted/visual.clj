@@ -1,4 +1,4 @@
-;; polysted_visual.clj — コントローラのビジュアルエディット (原作 VISUAL.C の vis_edit) の計算。純粋関数のみ。
+;; src/polysted/visual.clj — コントローラのビジュアルエディット (原作 VISUAL.C の vis_edit) の計算。純粋関数のみ。
 ;;
 ;; 原作の流れ (VISUAL.C・EDIT.C で確認):
 ;;   - 編集画面の V。範囲指定中なら範囲の中の既存のコントローラを編集、そうでなければカーソル位置に新しく作る。
@@ -25,11 +25,10 @@
 ;;   出力に入らない (書き間違いと見て) b2 に入れる。前の値の検索は SAME の参照先までは追わない。
 ;;   範囲読み込みで 240 を超えたときに足す点の ST は、原作は前の点の ST の写しだが、その行の ST にする。
 ;;   ST が 240 を超える点は、その点の行を ST 240 にして残りを休符で足す。
-;; 読み込み: (load-file "polysted_visual.clj")  ※ polysted_ctrl.clj・polysted_roll.clj の後、polysted_session.clj の前
-(ns polysted-visual
+(ns polysted.visual
   (:require [clojure.string :as str]
-            [polysted-edit]
-            [polysted-ctrl]))
+            [polysted.edit]
+            [polysted.ctrl]))
 
 ;; ---- 種類 ----
 (defn pitch? [vmo] (zero? vmo))
@@ -37,7 +36,7 @@
 (defn kind-name "種類の表示 (原作の tmp9)" [vmo]
   (cond
     (pitch? vmo) "PITCH"
-    (< vmo 128) (polysted-ctrl/ctrl-name vmo)
+    (< vmo 128) (polysted.ctrl/ctrl-name vmo)
     (= vmo 0x98) "Tr.Exclu"
     (<= 0x90 vmo 0x97) (str "UserExc " (- vmo 0x90))
     (= vmo 0xE7) "TEMPO"
@@ -78,7 +77,7 @@
       (re-matches #"U\d" t) (let [n (num (subs t 1))] (if (<= n 7) {:vmo (+ 0x90 n) :vmo2 0} {:error "U0〜U7 です"}))
       (re-matches #"R\d{1,3}" t) (let [n (num (subs t 1))] (if (<= n 127) {:vmo 0xDE :vmo2 n} {:error "R0〜R127 です"}))
       (str/starts-with? t "/")
-      (let [{:keys [code ctl]} (polysted-ctrl/spc-code t)]
+      (let [{:keys [code ctl]} (polysted.ctrl/spc-code t)]
         (cond (nil? code) {:error "記号が違います"}
               (= code 0xEE) {:vmo 0 :vmo2 0}
               (= code 0x98) (if (= 0x98 (first cur)) {:vmo 0x98 :vmo2 (cur 2)} {:error exc-cursor-msg})
@@ -319,7 +318,7 @@
                                  recs)]
                       (recur (inc i) (if (< a 0xF0) (- ttc b) ttc) recs))))]
     (into (subvec cleared 0 pos)
-          (polysted-edit/mix-records (subvec cleared pos) (points->records pts kind)))))
+          (polysted.edit/mix-records (subvec cleared pos) (points->records pts kind)))))
 
 ;; ---- 簡易チェック (期待値は VISUAL.C を手で追って求めた) ----
 (defn run-checks []
@@ -379,8 +378,7 @@
                        [[0x98 0 5 30] [0xF7 0 0x41 0x81] [60 48 46 64]]]])
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-visual: OK " (count checks) "件"))
+      (println (str "polysted.visual: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

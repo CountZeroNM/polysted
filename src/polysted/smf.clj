@@ -1,4 +1,4 @@
-;; polysted_smf.clj — SMF (.mid) の読み込み → レコード形式の曲
+;; src/polysted/smf.clj — SMF (.mid) の読み込み → レコード形式の曲
 ;;
 ;; 方針【設計判断】(原作 STED2 には SMF 読み込みが無いので、仕様は本実装で決めたもの):
 ;;   - javax.sound.midi で読む (フォーマット 0/1、ランニングステータス対応)。SMPTE 時間は未対応
@@ -15,9 +15,8 @@
 ;;     最初のトラックに入れる。拍子・調号・トラック名 (→ コメント) も取り込む
 ;;   - 最後のイベントの ST は、トラック終端 (End of Track) までの時間 (無ければ音の長さ)
 ;;
-;; 読み込み: (load-file "polysted_smf.clj")  ※ロード時に run-checks が走る
-;; 使い方:   (polysted-smf/read-smf "x.mid") => {:song 曲 :warnings [...]}
-(ns polysted-smf
+;; 使い方:   (polysted.smf/read-smf "x.mid") => {:song 曲 :warnings [...]}
+(ns polysted.smf
   (:require [clojure.string :as str])
   (:import (javax.sound.midi MidiSystem Sequence Track MidiEvent ShortMessage MetaMessage SysexMessage)
            (java.io File)
@@ -245,8 +244,7 @@
           [(key-sig->byte 2 false) (key-sig->byte -5 true)]  [2 29]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-smf: OK " (count checks) "件"))
+      (println (str "polysted.smf: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

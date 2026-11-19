@@ -1,10 +1,10 @@
-;; polysted_tui.clj — TUI 層 (ターミナル上の全画面エディタ)
+;; src/polysted/tui.clj — TUI 層 (ターミナル上の全画面エディタ)
 ;;
 ;; 構成 (md 3.5 の方針どおり、コアには手を入れない):
 ;;   1. 純粋: decode-keys (端末の入力バイト → キー) / handle-key (ui, キー → ui)
 ;;            render-lines (ui → 画面の行)。キー割り当ては normal-keys / direct-keys の表(データ)。
 ;;   2. 副作用: run! — stty で raw モードにし、ANSI エスケープで描画するループ。
-;;      セッションは REPL と同じ polysted-session/S を使うので、REPL と行き来できる。
+;;      セッションは REPL と同じ polysted.session/S を使うので、REPL と行き来できる。
 ;; 依存ライブラリなし。Linux/macOS のターミナル (stty と /dev/tty) が必要。
 ;;
 ;; モード:
@@ -13,24 +13,24 @@
 ;;     Enter で行を挿入し K# → ST → GT → VEL の順に入力。A〜G・0〜9 で既存の欄を上書き。
 ;;
 ;; 起動:
-;;   REPL から: (load-file "polysted_tui_base.clj") (load-file "polysted_tui_screens.clj") (load-file "polysted_tui.clj") (s/tui)
-;; 分割: 入力の解読・UI の状態・共通の関数は polysted_tui_base.clj、補助の画面は polysted_tui_screens.clj
-;;   単体:      clojure -M tui.clj [song.edn | song.rcp]
-(ns polysted-tui
+;;   REPL から: (s/tui)
+;; 分割: 入力の解読・UI の状態・共通の関数は src/polysted/tui_base.clj、補助の画面は src/polysted/tui_screens.clj
+;;   単体:      clojure -M:tui [song.edn | song.rcp]   (-main)
+(ns polysted.tui
   (:refer-clojure :exclude [run!])
   (:require [clojure.string :as str]
-            [polysted-session :as ss]
-            [polysted-edit]
-            [polysted-rhythm]
-            [polysted-ctrl :as sc]
-            [polysted-notename]
-            [polysted]
-            [polysted-rcp]
-            [polysted-edn]
+            [polysted.session :as ss]
+            [polysted.edit]
+            [polysted.rhythm]
+            [polysted.ctrl :as sc]
+            [polysted.notename]
+            [polysted.mml]
+            [polysted.rcp]
+            [polysted.edn]
             ;; 土台と補助の画面は別のファイル (2026-11-19 に分割)
-            [polysted-tui-base :refer [body-height cur-pos cut-width decode-keys dirty? new-ui pad-l pad-r
+            [polysted.tui-base :refer [body-height cur-pos cut-width decode-keys dirty? new-ui pad-l pad-r
                                 page prompt-labels recs run-cmd set-msg]]
-            [polysted-tui-screens :refer [ev-key ot-col ot-key render-excview render-onetouch render-rhythm render-trkset
+            [polysted.tui-screens :refer [ev-key ot-col ot-key render-excview render-onetouch render-rhythm render-trkset
                                 render-uexc rh-key rh-submit ts-field ts-key ts-labels ts-set ux-key
                                 ux-submit open-record rc-key rc-submit render-record]]))
 
@@ -39,7 +39,7 @@
 ;; ============================================================
 
 ;; 通常モードのキー割り当て。値は
-;;   [:cmd コマンド名 引数...]  → polysted-session/dispatch に渡す
+;;   [:cmd コマンド名 引数...]  → polysted.session/dispatch に渡す
 ;;   [:ui 動作 ...]             → TUI 自身の動作
 ;; TUI/GUI で共通に使えるよう、データとして持つ。
 (def normal-keys
@@ -136,12 +136,12 @@
 
 (defn parse-field
   "欄の入力文字列 → 値。空なら :keep、不正なら nil。
-   K#: 音名かキー番号 (polysted-notename)。ST/GT: 0〜255。VEL: 0 以上 (127 で頭打ち、原作どおり)"
+   K#: 音名かキー番号 (polysted.notename)。ST/GT: 0〜255。VEL: 0 以上 (127 で頭打ち、原作どおり)"
   [s row cx text]
   (let [t (str/trim text)]
     (cond
       (str/blank? t) :keep
-      (zero? cx)     (polysted-notename/parse-token t (key-ctx s row))
+      (zero? cx)     (polysted.notename/parse-token t (key-ctx s row))
       :else          (when (re-matches #"\d{1,3}" t)
                        (let [v (Long/parseLong t)]
                          (cond (= cx 3)   (min 127 v)
@@ -440,7 +440,7 @@
               (if-not (:rhythm? t)
                 (set-msg ui "RHY が OFF のトラックです (Tab のトラック設定で RHY を ON にすると編集できます)")
                 (assoc ui :screen :rhythm :mark nil
-                       :rh {:meas (polysted-edit/meas-no (recs ui) (cur-pos ui)) :cx 0 :cy 0 :x0 0
+                       :rh {:meas (polysted.edit/meas-no (recs ui) (cur-pos ui)) :cx 0 :cy 0 :x0 0
                             :page (if (> (bit-and (or (:rhy-byte t) 0x80) 31) 0) 16 0)})))
     :screen (assoc ui :screen (if (= :trkset (:screen ui)) :edit :trkset) :mark nil
                    :ts-row (+ 2 (:tr (:s ui))) :ts-col 0)
@@ -451,7 +451,7 @@
     :insert-ctrl (start-ctrl-insert ui)
     :chord       (if-let [row (ss/chord-target (:s ui))]
                    (let [root ((get (recs ui) row) 0)]
-                     (assoc ui :chord {:row row :root root :no 0 :keys (polysted-edit/chord-keys root 0)}))
+                     (assoc ui :chord {:row row :root root :no 0 :keys (polysted.edit/chord-keys root 0)}))
                    (set-msg ui "コードにするノートがありません (ノートの行か、その次の小節線・END の上で X)"))
     :val         (run-cmd ui :value-step [(:cx ui) (first args)])
     :exclusive   (let [r (get (recs ui) (cur-pos ui))]
@@ -555,15 +555,15 @@
   "コード選択中のキー (原作 KEY_SUB.C chord_sel)"
   [ui key]
   (let [{:keys [row root no keys]} (:chord ui)
-        set-no (fn [ui n] (assoc ui :chord {:row row :root root :no n :keys (polysted-edit/chord-keys root n)}))
-        set-root (fn [ui r] (if (<= 0 r 127) (assoc ui :chord {:row row :root r :no no :keys (polysted-edit/chord-keys r no)}) ui))]
+        set-no (fn [ui n] (assoc ui :chord {:row row :root root :no n :keys (polysted.edit/chord-keys root n)}))
+        set-root (fn [ui r] (if (<= 0 r 127) (assoc ui :chord {:row row :root r :no no :keys (polysted.edit/chord-keys r no)}) ui))]
     (cond
       (= key :esc)   (assoc ui :chord nil)
       (= key :enter) (-> (run-cmd (assoc ui :chord nil) :insert-chord [row keys]))
       (= key :left)  (set-no ui (mod (dec no) 20))
       (= key :right) (set-no ui (mod (inc no) 20))
-      (= key :up)    (assoc-in ui [:chord :keys] (polysted-edit/chord-rotate keys 1))
-      (= key :down)  (assoc-in ui [:chord :keys] (polysted-edit/chord-rotate keys -1))
+      (= key :up)    (assoc-in ui [:chord :keys] (polysted.edit/chord-rotate keys 1))
+      (= key :down)  (assoc-in ui [:chord :keys] (polysted.edit/chord-rotate keys -1))
       (= key :pgdn)  (set-root ui (inc root))
       (= key :pgup)  (set-root ui (dec root))
       (fkey key)     (let [[n sh] (fkey key)] (set-no ui (+ n (if sh 10 0))))
@@ -745,7 +745,7 @@
                  (= :input (:mode ui)) (str (if (= :ts-edit (:kind ui)) (ts-labels (ts-field ui)) (prompt-labels (:kind ui)))
                                             "> " (:buf ui) "_")
                  (:chord ui) (let [{:keys [root no keys]} (:chord ui)]
-                               (str "コード: " (ss/key->name root) " " (polysted-edit/chord-names no) " :"
+                               (str "コード: " (ss/key->name root) " " (polysted.edit/chord-names no) " :"
                                     (apply str (map #(str " " (ss/key->name %)) keys))
                                     "   ←→ 種類 ↑↓ 転回 PgUp/Dn ルート F1-10 Enter 決定 Esc 取消"))
                  (:msg s)              (str "! " (:msg s))
@@ -833,9 +833,9 @@
       :save (do (when (re-find #"(?i)\.g36$" (str arg))
                   (throw (ex-info "G36 (RCP v3) の書き出しは未対応です。.rcp か .r36 で保存してください" {})))
                 (cond
-                  (ss/rcp-path? arg) (polysted-rcp/write-rcp! (:song (:s ui)) arg)   ; .rcp / .r36 は RCP 形式
-                  (ss/smf-path? arg) (polysted/write-mid! (ss/->song (:s ui)) arg)   ; .mid は SMF (書き出しのみ)
-                  :else (polysted-edn/save-song! (:song (:s ui)) arg))
+                  (ss/rcp-path? arg) (polysted.rcp/write-rcp! (:song (:s ui)) arg)   ; .rcp / .r36 は RCP 形式
+                  (ss/smf-path? arg) (polysted.mml/write-mid! (ss/->song (:s ui)) arg)   ; .mid は SMF (書き出しのみ)
+                  :else (polysted.edn/save-song! (:song (:s ui)) arg))
                 (-> ui (assoc-in [:s :file] arg) (assoc :saved (:song (:s ui)))
                     (set-msg (str "保存しました: " arg))))
       ;; 再生を始めるとき、今のトラックが鳴らない MODE (Mute・Rec) なら案内する
@@ -855,12 +855,12 @@
       ;; ユーザーエクスクルーシブのファイル: arg = [パス 番号] (番号 nil は .REX で 8 個、番号は .RES で 1 個)
       :rex-load (let [[path n] arg
                       bs (java.nio.file.Files/readAllBytes (.toPath (java.io.File. ^String path)))
-                      r (if n (polysted-rcp/res->entry bs) (polysted-rcp/rex->user-exc bs))]
+                      r (if n (polysted.rcp/res->entry bs) (polysted.rcp/rex->user-exc bs))]
                   (when (:error r) (throw (ex-info (:error r) {})))
                   (update ui :s #(if n (ss/uex-load-entry % n (:entry r)) (ss/uex-load % (:user-exc r)))))
       :rex-save (let [[path n] arg ue (ss/uex-table (:s ui))]
                   (java.nio.file.Files/write (.toPath (java.io.File. ^String path))
-                                             ^bytes (if n (polysted-rcp/entry->res (ue n)) (polysted-rcp/user-exc->rex ue))
+                                             ^bytes (if n (polysted.rcp/entry->res (ue n)) (polysted.rcp/user-exc->rex ue))
                                              ^"[Ljava.nio.file.OpenOption;" (make-array java.nio.file.OpenOption 0))
                   (set-msg ui (str "書き出しました: " path)))
       ;; トラックエクスクルーシブのテキストファイル .EXC
@@ -896,7 +896,7 @@
               (recur (inc n))))))))
 
 (defn run!
-  "TUI を起動する。セッションは polysted-session/S。q で終了すると S に結果が残る。"
+  "TUI を起動する。セッションは polysted.session/S。q で終了すると S に結果が残る。"
   []
   (when-not (System/console)
     (throw (ex-info "端末 (TTY) 上で起動してください (nREPL などでは動きません)" {})))
@@ -1245,7 +1245,7 @@
           (let [u (keys* ui0 (ks :ctrl-x "rec" :enter \c :ctrl-u "5" :enter \o \s :ctrl-u "3 4" :enter))
                 u2 (keys* u [:enter])
                 t (keys* ui0 [:tab :right :enter])
-                modes (map #(polysted-ctrl/mode-str (first (get-in (keys* ui0 (concat [:tab :right] (repeat % :enter))) [:s :song :tracks]))) [1 2 3 4])]
+                modes (map #(polysted.ctrl/mode-str (first (get-in (keys* ui0 (concat [:tab :right] (repeat % :enter))) [:s :song :tracks]))) [1 2 3 4])]
             [(:screen u) (:rc u) (:effects u2) (str/trim (nth (:lines (render-lines u)) 5)) (:screen (keys* u [:esc]))
              (:screen t) modes])
           [:record {:ch 5 :thru? false :metronome? true :top 3 :btm 4}
@@ -1330,9 +1330,16 @@
           [[[:exc-save "a.exc"]] true true "F0 41 10 GT F7\r\n" [[0x98 0 0 0] [0xF7 0 0x41 0x10] [0xF7 0 0x80 0xF7]]]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-tui: OK " (count checks) "件"))
+      (println (str "polysted.tui: OK " (count checks) "件"))
       (doseq [[l a e] bad]
         (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)
+(defn -main
+  "clojure -M:tui [file]  TUI を単体で起動する (file は .edn / .rcp / .r36 / .g36 / .mid)"
+  [& args]
+  (ss/open-at-start! (first args))
+  (run!)
+  (ss/stop!)
+  (shutdown-agents)
+  (System/exit 0))

@@ -1,16 +1,15 @@
-;; polysted_tui_screens.clj — TUI の補助の画面 (純粋): トラック設定・リズムパターン編集・ワンタッチ表・
+;; src/polysted/tui_screens.clj — TUI の補助の画面 (純粋): トラック設定・リズムパターン編集・ワンタッチ表・
 ;; ユーザーエクスクルーシブの表・エクスクルーシブの表示のキー処理と描画
 ;;
-;; polysted_tui.clj から分けたもの (2026-11-19)。編集画面と共通のキー (保存・終了・再生など) は、
-;; 呼び出し側 (polysted_tui.clj の handle-key) が渡す関数 common で処理する (名前空間の循環を避けるため)。
-;; 読み込み: (load-file "polysted_tui_screens.clj")  ※ polysted_tui_base.clj の後、polysted_tui.clj の前
-(ns polysted-tui-screens
+;; src/polysted/tui.clj から分けたもの (2026-11-19)。編集画面と共通のキー (保存・終了・再生など) は、
+;; 呼び出し側 (src/polysted/tui.clj の handle-key) が渡す関数 common で処理する (名前空間の循環を避けるため)。
+(ns polysted.tui-screens
   (:require [clojure.string :as str]
-            [polysted-session :as ss]
-            [polysted-edit]
-            [polysted-rhythm]
-            [polysted-ctrl :as sc]
-            [polysted-tui-base :refer [cur-pos cut-width dirty? pad-l pad-r prompt-labels recs
+            [polysted.session :as ss]
+            [polysted.edit]
+            [polysted.rhythm]
+            [polysted.ctrl :as sc]
+            [polysted.tui-base :refer [cur-pos cut-width dirty? pad-l pad-r prompt-labels recs
                                 run-cmd set-msg]]))
 
 (declare ts-labels ts-field ts-set)
@@ -107,8 +106,8 @@
   (let [{:keys [cx cy page]} (:rh ui) idx (+ page cy)
         as (ss/rhythm-assign (:s ui))
         v  (or (first (get-in (rh-pattern ui) [:steps cx :hits idx])) 0)
-        l  (mod (+ (polysted-rhythm/vel->level v) d) 10)]
-    (rh-update ui #(ss/rhythm-set-hit % cx idx (polysted-rhythm/rhy-vel l) (nth (as idx) 2)))))
+        l  (mod (+ (polysted.rhythm/vel->level v) d) 10)]
+    (rh-update ui #(ss/rhythm-set-hit % cx idx (polysted.rhythm/rhy-vel l) (nth (as idx) 2)))))
 
 (defn rh-key
   "リズム画面のキー処理。common は編集画面と共通のキーの処理"
@@ -126,7 +125,7 @@
     (cond
       (#{:esc :ctrl-g} key)
       (-> ui (assoc :screen :edit)
-          (update :s #(ss/goto-pos % (or (polysted-edit/meas-add (ss/cur-recs %) meas) (count (ss/cur-recs %))))))
+          (update :s #(ss/goto-pos % (or (polysted.edit/meas-add (ss/cur-recs %) meas) (count (ss/cur-recs %))))))
       (= key :left)  (set-cx ui (dec cx))
       (= key :right) (set-cx ui (inc cx))
       (= key :up)    (assoc-in ui [:rh :cy] (mod (dec cy) 17))
@@ -145,7 +144,7 @@
       (and (char? key) (Character/isDigit (char key)))
       (if st?
         (assoc ui :mode :input :kind :rh-st :buf (str key))
-        (rh-update ui #(ss/rhythm-set-hit % cx idx (polysted-rhythm/rhy-vel (- (int key) (int \0))) (nth (as idx) 2))))
+        (rh-update ui #(ss/rhythm-set-hit % cx idx (polysted.rhythm/rhy-vel (- (int key) (int \0))) (nth (as idx) 2))))
       (#{\space \+ \.} key) (if st? (st-add ui 1) (rh-level-step ui 1))
       (= key \>) (if st? (st-add ui 10) (rh-level-step ui 1))
       (#{\- \,} key) (if st? (st-add ui -1) (rh-level-step ui -1))
@@ -167,8 +166,8 @@
       (= key \N) (assoc ui :mode :input :kind :rh-step :buf (str (or (:rhy-step (:s ui)) 12)))
       (and (= key \a) (not st?))
       (let [[nm k g] (as idx)] (assoc ui :mode :input :kind :rh-assign :buf (str k " " g " " nm)))
-      (= key \m) (-> ui (update :s #(ss/goto-pos % (or (polysted-edit/meas-add (ss/cur-recs %) meas) 0))) (update :effects conj [:play-measure]))
-      (= key \P) (-> ui (update :s #(ss/goto-pos % (or (polysted-edit/meas-add (ss/cur-recs %) meas) 0))) (update :effects conj [:play-here]))
+      (= key \m) (-> ui (update :s #(ss/goto-pos % (or (polysted.edit/meas-add (ss/cur-recs %) meas) 0))) (update :effects conj [:play-measure]))
+      (= key \P) (-> ui (update :s #(ss/goto-pos % (or (polysted.edit/meas-add (ss/cur-recs %) meas) 0))) (update :effects conj [:play-here]))
       :else (if (#{\q \w \p \? \u :ctrl-r} key) (common ui key) ui))))
 
 (defn rh-submit [ui]
@@ -346,7 +345,7 @@
                      (apply str (map (fn [x] (let [st (steps x)]
                                                (cell (cond (= :raw (:kind st)) "*"
                                                            :else (let [v (first (get-in st [:hits i]))]
-                                                                   (if (and v (pos? v)) (str (polysted-rhythm/vel->level v)) "-"))))))
+                                                                   (if (and v (pos? v)) (str (polysted.rhythm/vel->level v)) "-"))))))
                                      xs))))
         strow (str (pad-r " ST" 13) (apply str (map #(cell (:st (steps %))) xs)))
         info  (cond

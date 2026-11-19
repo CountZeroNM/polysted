@@ -1,4 +1,4 @@
-;; polysted_score.clj — 楽譜表示の計算 (原作 SCORE.C gra_gakufu・st_cv・put_sharp、KEY_SUB.C key_shift)。純粋関数のみ。描画は polysted_gui.clj。
+;; src/polysted/score.clj — 楽譜表示の計算 (原作 SCORE.C gra_gakufu・st_cv・put_sharp、KEY_SUB.C key_shift)。純粋関数のみ。描画は src/polysted/gui.clj。
 ;;
 ;; 原作の楽譜表示 (編集画面の Ctrl-G で切り替える補助表示の 1 つ) で確認したこと:
 ;;   - ト音記号とヘ音記号の大譜表。横の位置は ST に比例 (タイムベース 48 換算で 1 tick = 1 ドット)。
@@ -14,9 +14,8 @@
 ;; 本実装の違い【設計判断】: 表示の開始位置 (原作はカーソルの約 160 tick 前から) と最初の長いステップの圧縮は
 ;;   GUI 側でスクロールにする。0xF6 (コメント) は描かない。0xF5 の調の値はタイムベースで割らない
 ;;   (原作は ST と同じく割っている)。
-;; 読み込み: (load-file "polysted_score.clj")  ※ polysted_edit.clj の後
-(ns polysted-score
-  (:require [polysted-edit]))
+(ns polysted.score
+  (:require [polysted.edit]))
 
 (def onp-ps "半音 → 幹音の段 (C=0 … B=6)" [0 0 1 1 2 3 3 4 4 5 5 6])
 (def ^:private shfl [0 1 0 1 0 0 1 0 1 0 1 0])
@@ -177,7 +176,7 @@
             (#{0xF6 0xF7} a) (recur (inc i) x changes vels bars)
             (> a 0xF4)
             (let [same-vals (when (= a 0xFC)
-                              (when-let [ad (polysted-edit/meas-add recs (+ b (* 256 (bit-and c 3))))]
+                              (when-let [ad (polysted.edit/meas-add recs (+ b (* 256 (bit-and c 3))))]
                                 (keep rec-ctl (take-while #(< (% 0) 0xFC) (subvec recs (min ad n))))))
                   gap (if (and (= a 0xF5) (pos? x)) 44 2)]
               (recur (inc i) (+ x gap) (into changes (map (fn [[k v]] {:x x :ctl k :v v}) same-vals)) vels
@@ -241,8 +240,7 @@
            :bars [96 194 196] :end 198}]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-score: OK " (count checks) "件"))
+      (println (str "polysted.score: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

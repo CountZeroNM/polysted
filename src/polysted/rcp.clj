@@ -1,10 +1,9 @@
-;; polysted_rcp.clj  --  RCP/R36 読み込み → polysted.clj の song 形式 → .mid (最小版・動作未確認)
+;; src/polysted/rcp.clj  --  RCP/R36 読み込み → src/polysted/mml.clj の song 形式 → .mid (最小版・動作未確認)
 ;; 使い方:
-;;   (load-file "polysted.clj")        ; 先に読み込む
-;;   (load-file "polysted_rcp.clj")
-;;   (polysted-rcp/rcp->mid! "曲.rcp" "out.mid")
-(ns polysted-rcp
-  (:require [polysted]
+;;   (require 'polysted.rcp)
+;;   (polysted.rcp/rcp->mid! "曲.rcp" "out.mid")
+(ns polysted.rcp
+  (:require [polysted.mml]
             [clojure.string :as str])
   (:import (java.nio.file Files Paths)
            (java.nio.charset Charset)))
@@ -501,7 +500,7 @@
                        (cond (:mute? t)   "  [ミュート:スキップ]"
                              (:rhythm? t) "  [リズム]"
                              :else ""))))
-    (polysted/write-mid! (assoc song :tracks (vec used)) out)
+    (polysted.mml/write-mid! (assoc song :tracks (vec used)) out)
     (println "wrote" out)))
 
 ;; ------------------------------------------------------------

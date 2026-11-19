@@ -1,4 +1,4 @@
-;; polysted_roll.clj — ピアノロール表示の計算 (純粋関数。描画は polysted_gui.clj)
+;; src/polysted/roll.clj — ピアノロール表示の計算 (純粋関数。描画は src/polysted/gui.clj)
 ;;
 ;; 原作 STED2 にピアノロール画面は無い。GUI ならではの表示として加えたもの【設計判断】。
 ;; 時間軸は「編集画面の行の並び」に合わせる: レコードを書かれた順に ST を足していく。
@@ -14,14 +14,13 @@
 ;;     休符を前の音に結合するのと同じ形。ほかの音の時刻は変わらない)。直前がコントローラ・小節線などなら
 ;;     同じ ST の休符にする。
 ;;   - 動かす: 消してから置く。
-;; 読み込み: (load-file "polysted_roll.clj")  ※ polysted_edit.clj の後、polysted_session.clj の前 (セッションが編集に使う)。ロード時に run-checks が走る
-(ns polysted-roll
-  (:require [polysted-edit]))
+(ns polysted.roll
+  (:require [polysted.edit]))
 
 (defn- meas-body
   "小節 m (1始まり) の中身 (小節線・SAME の手前まで)。無ければ空"
   [recs m]
-  (if-let [ad (polysted-edit/meas-add recs m)]
+  (if-let [ad (polysted.edit/meas-add recs m)]
     (vec (take-while #(< (% 0) 0xFC) (subvec recs (min ad (count recs)))))
     []))
 
@@ -31,7 +30,7 @@
   "レコード列 → {:notes [{:idx :tick :len :key :vel :same?}] :bars [小節の先頭 tick] :ticks [各行の先頭 tick] :end 最後の tick}"
   [recs]
   (let [recs (vec recs)
-        evs  (polysted-edit/records->events recs)
+        evs  (polysted.edit/records->events recs)
         n    (count recs)]
     (loop [i 0 t 0 notes (transient []) bars [0] ticks (transient [])]
       (if (>= i n)
@@ -43,7 +42,7 @@
             (= a 0xFC)                       ; SAME: 参照先の小節を展開
             (let [body (meas-body recs (+ b (* 256 (bit-and c 3))))
                   [notes t2] (reduce (fn [[ns tt] br]
-                                       (let [st (:st (first (polysted-edit/records->events [br])) 0)]
+                                       (let [st (:st (first (polysted.edit/records->events [br])) 0)]
                                          [(cond-> ns (note? br) (conj! {:idx i :tick tt :len (br 2) :key (br 0)
                                                                         :vel (br 3) :same? true}))
                                           (+ tt (or st 0))]))
@@ -192,8 +191,7 @@
           [[2 [65 48 30 90] [0 36 0 0]] {:error "音の行ではありません"}]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-roll: OK " (count checks) "件"))
+      (println (str "polysted.roll: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

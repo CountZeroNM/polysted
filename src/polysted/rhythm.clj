@@ -1,11 +1,11 @@
-;; polysted_rhythm.clj — リズムパターン編集の変換 (原作 REDIT.C の rtopat / pattor)
+;; src/polysted/rhythm.clj — リズムパターン編集の変換 (原作 REDIT.C の rtopat / pattor)
 ;;
 ;; 小節を「ステップ」の並びとして見る。1ステップは ST=0 で続くノートと、最後の ST>0 の音 (または休符) の
 ;; かたまりで、そのステップの長さ ST を持つ。各ステップは、リズム割り当て表の 32 音それぞれの
 ;; [ベロシティ GT] を持つ。表に無いキーの音 (:extra) とコントローラなどの行 (:raw) はそのまま保持する。
-;; 純粋関数のみ。読み込み: (load-file "polysted_rhythm.clj")  ※ロード時に run-checks が走る
-(ns polysted-rhythm
-  (:require [polysted-edit]))
+;; 純粋関数のみ。
+(ns polysted.rhythm
+  (:require [polysted.edit]))
 
 ;; STED2.CNF の既定 #rhy_vel (音の強さ 1〜9 のベロシティ。0 は OFF)
 (def rhy-vel [0 14 28 42 56 70 84 98 112 127])
@@ -42,7 +42,7 @@
    :steps の要素: {:kind :note|:raw :st ST :hits {楽器番号 [vel gt]} :extra [表に無い音の行] :raw [コマンド行]}"
   [recs meas assign bar-st step-st]
   (let [recs (vec recs) n (count recs)
-        ad   (or (polysted-edit/meas-add recs meas) n)
+        ad   (or (polysted.edit/meas-add recs meas) n)
         at   (fn [i] (get recs i [0xFE 0 0 0]))]
     (cond
       (= 0xFC ((at ad) 0)) {:steps [] :same? true}
@@ -100,12 +100,12 @@
    空の最後の小節 (END の直前) なら末尾に足す"
   [recs meas new-recs]
   (let [recs (vec recs) n (count recs)
-        ad   (or (polysted-edit/meas-add recs meas) n)
+        ad   (or (polysted.edit/meas-add recs meas) n)
         r    (get recs ad)]
     (if (and r (= 0xFC (r 0)))
       recs
       (let [end (loop [j ad] (cond (>= j n) n (> ((recs j) 0) 0xFB) (inc j) :else (recur (inc j))))]
-        (polysted-edit/renumber-measures (vec (concat (subvec recs 0 ad) new-recs (subvec recs end))))))))
+        (polysted.edit/renumber-measures (vec (concat (subvec recs 0 ad) new-recs (subvec recs end))))))))
 
 ;; ---- 簡易チェック (期待値は REDIT.C を手で追って求めた) ----
 (defn run-checks []
@@ -140,8 +140,7 @@
           [["Hand Clap" 39 1] ["Kick" 35 2]]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-rhythm: OK " (count checks) "件"))
+      (println (str "polysted.rhythm: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

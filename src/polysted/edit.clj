@@ -1,15 +1,14 @@
-;; polysted_edit.clj -- STED2 編集コア (TRACK.C の trk_opt_sub / tai_compres の移植・動作未確認)
+;; src/polysted/edit.clj -- STED2 編集コア (TRACK.C の trk_opt_sub / tai_compres の移植・動作未確認)
 ;;
 ;; データ: 「レコード」= [b0 b1 b2 b3] の4整数ベクタ (STED2 の4バイトレコードそのもの)
 ;;   ノート [キー ST GT vel] / 休符 [0 ST 0 0] / コマンド [コード ST b2 b3] ...
 ;; 使い方:
-;;   (load-file "polysted.clj") (load-file "polysted_rcp.clj") (load-file "polysted_edit.clj")
-;;   ロード時に簡易チェック (run-checks) が走ります。
-(ns polysted-edit
-  (:require [polysted] [polysted-rcp]))
+;;   (require 'polysted.edit)。簡易チェックは (polysted.edit/run-checks)、全部は clojure -M:check。
+(ns polysted.edit
+  (:require [polysted.mml] [polysted.rcp]))
 
-;; polysted-rcp の非公開関数 decode-record を借りる (レコード→イベント)
-(def ^:private decode (deref #'polysted-rcp/decode-record))
+;; polysted.rcp の非公開関数 decode-record を借りる (レコード→イベント)
+(def ^:private decode (deref #'polysted.rcp/decode-record))
 
 (defn- note-rec? [r] (< (r 0) 0x80))
 (defn- silent-rec? [r] (and (note-rec? r) (or (zero? (r 2)) (zero? (r 3)))))
@@ -802,7 +801,7 @@
          evs (records->events opt)
          evs (if base-tempo
                (mapv (fn [e] (if (= :tempo (:type e))
-                               (assoc e :value (polysted-rcp/tempo-bpm base-tempo (:raw e)))
+                               (assoc e :value (polysted.rcp/tempo-bpm base-tempo (:raw e)))
                                e))
                      evs)
                evs)]
@@ -833,7 +832,7 @@
          (optimize-records [[60 48 46 64] [61 0 0 0] [62 48 46 64]] 1))
   (check "MML → レコード → 最適化"
          [[60 96 46 64] [62 48 46 64]]
-         (optimize-records (events->records (polysted/parse-mml "c4 r8 r8 d4" {})) 1))
+         (optimize-records (events->records (polysted.mml/parse-mml "c4 r8 r8 d4" {})) 1))
   (check "挿入と削除"
          [[1 1 1 1] [9 9 9 9] [2 2 2 2]]
          (-> [[1 1 1 1] [2 2 2 2] [3 3 3 3]]
@@ -981,4 +980,3 @@
          [{:type :note :key 60 :st 48 :gt 46 :vel 64}]
          (records->events [[60 48 46 64]])))
 
-(run-checks)

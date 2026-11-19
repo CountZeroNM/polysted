@@ -1,11 +1,10 @@
-;; polysted_edn.clj — 曲データ(レコード形式)の EDN 保存・読み込み
+;; src/polysted/edn.clj — 曲データ(レコード形式)の EDN 保存・読み込み
 ;; 方針: EDN テキストを保存形式の正とする(handoff の decisions「保存形式の正」)。
 ;; 形式: 曲の map そのもの + :format :polysted-song / :version 1。
 ;; 読み込みでは、名前を変える前の開発版の印 :sted-song も受け付ける (同じ形式)。
 ;;       各トラックの :recs は1行1レコード [b0 b1 b2 b3] で書く(git の差分で読めるように)。
-;; 読み込み: (load-file "polysted_edn.clj")  ※ロード時に run-checks が走る
-;; 使い方:   (polysted-edn/save-song! song "x.edn")  (polysted-edn/load-song "x.edn")
-(ns polysted-edn
+;; 使い方:   (polysted.edn/save-song! song "x.edn")  (polysted.edn/load-song "x.edn")
+(ns polysted.edn
   (:require [clojure.string :as str]
             [clojure.edn :as edn]))
 
@@ -92,9 +91,8 @@
          ["以前の印 :sted-song も読める" (count (:tracks (edn-str->song "{:format :sted-song :version 1 :tracks [{:recs [[60 48 46 64]]}]}"))) 1]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-edn: OK " (count checks) "件"))
+      (println (str "polysted.edn: OK " (count checks) "件"))
       (doseq [[l a e] bad]
         (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)

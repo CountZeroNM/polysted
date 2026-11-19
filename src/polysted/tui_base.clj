@@ -1,10 +1,9 @@
-;; polysted_tui_base.clj — TUI の土台 (純粋): 端末の入力バイトの解読、UI の状態、画面で共通の小さな関数
+;; src/polysted/tui_base.clj — TUI の土台 (純粋): 端末の入力バイトの解読、UI の状態、画面で共通の小さな関数
 ;;
-;; polysted_tui.clj から分けたもの (2026-11-19)。polysted_tui_screens.clj と polysted_tui.clj が :refer で使う。
-;; 読み込み: (load-file "polysted_tui_base.clj")  ※ polysted_session.clj の後
-(ns polysted-tui-base
+;; src/polysted/tui.clj から分けたもの (2026-11-19)。src/polysted/tui_screens.clj と src/polysted/tui.clj が :refer で使う。
+(ns polysted.tui-base
   (:require [clojure.string :as str]
-            [polysted-session :as ss]))
+            [polysted.session :as ss]))
 
 ;; ---- 入力バイト列 → キー ----
 (def csi-final

@@ -1,34 +1,34 @@
-;; polysted_gui.clj — GUI 層 (Swing。追加のライブラリなし)
+;; src/polysted/gui.clj — GUI 層 (Swing。追加のライブラリなし)
 ;;
 ;; 構成 (md 3.5 の方針: UI は描画と入力の変換だけを持ち、コアを共有する):
-;;   - 画面の内容は TUI と同じ polysted-tui/render-lines、キー操作は polysted-tui/handle-key をそのまま使う。
+;;   - 画面の内容は TUI と同じ polysted.tui/render-lines、キー操作は polysted.tui/handle-key をそのまま使う。
 ;;     編集画面・直接入力・トラック設定・リズム画面のすべての機能が GUI でも使える。
 ;;   - GUI 独自: メニュー (ファイル選択ダイアログ付きの開く・保存)、マウス (クリックで行を選ぶ、
 ;;     ホイールでスクロール)、ウィンドウの大きさに合わせた表示行数、等幅フォントでの描画。
 ;;   - 純粋部分: pressed->key / typed->key (Swing のキーイベント → TUI のキー)、
 ;;     paint-screen! (render-lines の結果を Graphics2D に描く。画像にも描けるのでテストできる)。
 ;;   - ピアノロール (原作には無い。GUI ならではの表示【設計判断】): 編集画面の右側に今のトラックの音を描く。
-;;     計算は polysted_roll.clj (純粋)。カーソルの音を強調し、ほかのトラックの音は薄く重ねる。
+;;     計算は src/polysted/roll.clj (純粋)。カーソルの音を強調し、ほかのトラックの音は薄く重ねる。
 ;;     クリックで音の行へ移動、Ctrl+ホイールで横の拡大・縮小、F11 で表示の切り替え。
 ;;     編集: ドラッグで音の移動 (高さ・時刻)、右端のドラッグで長さ (GT)、空き所のダブルクリックで追加、
-;;     右クリックで削除。時刻と長さはグリッドに合わせる。レコードの操作は polysted-session/roll-edit (undo 1回分)。
-;; セッションは REPL・TUI と同じ polysted-session/S。
+;;     右クリックで削除。時刻と長さはグリッドに合わせる。レコードの操作は polysted.session/roll-edit (undo 1回分)。
+;; セッションは REPL・TUI と同じ polysted.session/S。
 ;;
 ;; 起動:
-;;   REPL から: (load-file "polysted_tui.clj") (load-file "polysted_gui.clj") (s/gui)
-;;   単体:      clojure -M gui.clj [song.edn | x.rcp | x.mid]
-(ns polysted-gui
+;;   REPL から: (s/gui)
+;;   単体:      clojure -M:gui [song.edn | x.rcp | x.mid]   (-main)
+(ns polysted.gui
   (:refer-clojure :exclude [run!])
   (:require [clojure.string :as str]
-            [polysted-session :as ss]
-            [polysted-tui :as tui]
-            [polysted-tui-base :as tb]
-            [polysted-tui-screens]
-            [polysted-roll :as roll]
-            [polysted-visual]
-            [polysted-score :as score]
-            [polysted-ctrl]
-            [polysted-edn])
+            [polysted.session :as ss]
+            [polysted.tui :as tui]
+            [polysted.tui-base :as tb]
+            [polysted.tui-screens]
+            [polysted.roll :as roll]
+            [polysted.visual]
+            [polysted.score :as score]
+            [polysted.ctrl]
+            [polysted.edn])
   (:import (javax.swing JFrame JDialog JPanel JMenuBar JMenu JMenuItem JFileChooser JOptionPane SwingUtilities
                         KeyStroke WindowConstants)
            (javax.swing.filechooser FileNameExtensionFilter)
@@ -295,7 +295,7 @@
     (<= (- end-x (min 4 (/ w 3))) mx (+ end-x 1))))
 
 ;; ============================================================
-;; 2.7 楽譜表示 (原作 SCORE.C gra_gakufu。計算は polysted_score.clj)
+;; 2.7 楽譜表示 (原作 SCORE.C gra_gakufu。計算は src/polysted/score.clj)
 ;; ============================================================
 ;; 記号のフォントが無くても描けるよう、音符・休符・記号は図形で描く (クレフは G と F の文字)【設計判断】
 (defonce ^:private score-cache (atom {}))
@@ -510,7 +510,7 @@
    SC-55 のドットのデータは 16×16 の点で描く"
   [^Graphics2D g ui [x y w h]]
   (let [s (:s ui)
-        v (polysted-ctrl/exc-view (ss/cur-recs s) (:pos s) (ss/uex-table s))
+        v (polysted.ctrl/exc-view (ss/cur-recs s) (:pos s) (ss/uex-table s))
         fm (.getFontMetrics g) lh (+ 2 (.getHeight fm)) cw (.charWidth fm \M)
         clip (.getClip g)]
     (.setClip g (int x) (int y) (int w) (int h))
@@ -518,8 +518,8 @@
     (if-not v
       (do (.setColor g dim)
           (.drawString g "カーソルをエクスクルーシブ (Tr.Exclu か U0〜U7) の行に置くと、データを表示します" (int (+ x 10)) (int (+ y lh))))
-      (let [lines (polysted-ctrl/exc-view-lines v false)
-            dots (:dots (polysted-ctrl/sc55-display (:data v)))]
+      (let [lines (polysted.ctrl/exc-view-lines v false)
+            dots (:dots (polysted.ctrl/sc55-display (:data v)))]
         (doseq [[i l] (map-indexed vector lines)]
           (.setColor g (cond (zero? i) (Color. 0xE8 0xD0 0x50) (= i 2) dim :else fg))
           (loop [k 0 cx 0]                                        ; 桁に合わせて 1 文字ずつ
@@ -547,7 +547,7 @@
     (swap! roll-opts dissoc :geom :sgeom)))   ; 出していないときはマウスの位置を解釈しない
 
 ;; ============================================================
-;; 2.6 コントローラのビジュアルエディット (原作 VISUAL.C。計算は polysted_visual.clj)
+;; 2.6 コントローラのビジュアルエディット (原作 VISUAL.C。計算は src/polysted/visual.clj)
 ;; ============================================================
 ;; 編集の状態 ve: {:vmo :vmo2 :para :step :cx :ccx (SUB、nil なら無し) :from :len :ost :changed? :maxst :msg}
 (def ^:private wave-keys
@@ -575,10 +575,10 @@
   [ve k n]
   (let [{:keys [para step cx ccx vmo maxst]} ve
         co (count para) st (total-st ve)
-        pitch? (polysted-visual/pitch? vmo)
+        pitch? (polysted.visual/pitch? vmo)
         ys (if pitch? 16 1) yss (if pitch? 682 10)
         xss (cond (> co 384) 24 (> co 192) 12 :else 6)
-        setv (fn [ve v] (assoc-in ve [:para cx] (polysted-visual/clamp-value vmo v)))
+        setv (fn [ve v] (assoc-in ve [:para cx] (polysted.visual/clamp-value vmo v)))
         ve (dissoc ve :msg)
         changed (fn [ve pts] (-> ve (merge pts) (assoc :changed? true) (update :cx #(min % (dec (count (:para pts))))) (assoc :ccx nil)))]
     (cond
@@ -600,22 +600,22 @@
             xc (if (and shift? (>= (wave-keys k) 7)) (* 2 (or n 0)) 2)]
         (if (or (< xc 2) (> xc ln))
           (assoc ve :msg (str "波の数は 1〜" (quot ln 2) " です"))
-          (cond-> (merge ve (polysted-visual/wave {:para para :step step} (wave-keys k)
+          (cond-> (merge ve (polysted.visual/wave {:para para :step step} (wave-keys k)
                                               {:cx cx :ccx ccx :shift? shift? :xc xc :st st :vmo vmo}))
-            (nil? ccx) (assoc :changed? (or (:changed? ve) (not= step (polysted-visual/bunkatsu st co)))))))
-      (#{\x \X} k) (if (and n (pos? n)) (changed ve (polysted-visual/cut-points ve n)) ve)
+            (nil? ccx) (assoc :changed? (or (:changed? ve) (not= step (polysted.visual/bunkatsu st co)))))))
+      (#{\x \X} k) (if (and n (pos? n)) (changed ve (polysted.visual/cut-points ve n)) ve)
       (#{\z \Z} k) (cond (not (and n (pos? n))) ve
                          (> n maxst) (assoc ve :msg "データが多すぎます。")
-                         :else (changed ve {:para para :step (polysted-visual/zoom-steps step n)}))
+                         :else (changed ve {:para para :step (polysted.visual/zoom-steps step n)}))
       (= k \i)     (cond (not (and n (pos? n))) ve
                          (> (+ st n) maxst) (assoc ve :msg "データが多すぎます。")
-                         :else (changed ve (polysted-visual/insert-step ve cx n)))
+                         :else (changed ve (polysted.visual/insert-step ve cx n)))
       (= k \I)     (cond (not (and n (pos? n))) ve
                          (> (+ (- st (step cx)) n) maxst) (assoc ve :msg "データが多すぎます。")
                          :else (changed ve {:para para :step (assoc step cx n)}))
-      (= k \d)     (if (and (> co 1) (> st (step cx))) (changed ve (polysted-visual/delete-point ve cx)) ve)
-      (= k \D)     (if (and n (pos? n) (> co 1) (< n st)) (changed ve (polysted-visual/delete-st ve cx n)) ve)
-      (#{\c \C} k) (-> (changed ve (polysted-visual/link-points ve)) (assoc :cx 0))
+      (= k \d)     (if (and (> co 1) (> st (step cx))) (changed ve (polysted.visual/delete-point ve cx)) ve)
+      (= k \D)     (if (and n (pos? n) (> co 1) (< n st)) (changed ve (polysted.visual/delete-st ve cx n)) ve)
+      (#{\c \C} k) (-> (changed ve (polysted.visual/link-points ve)) (assoc :cx 0))
       ;; Y: 縦の拡大 (原作の yzm: ピッチは 1→2→3→6→1 倍で 0 を中心に、ほかは 1↔2 倍。
       ;;    原作の 2 倍は半分の高さの表示を全体に広げるもので、ここは初めから全体なので、カーソルの値のまわり 64 段を出す【設計判断】)
       (#{\y \Y} k) (let [z (or (:yzm ve) 1)
@@ -633,14 +633,14 @@
   (let [gx 56 gy 64 gw (max 50 (- w gx 16)) gh (max 40 (- h gy 40))
         st (max 1 (total-st ve))
         cums (reductions + 0 (:step ve))
-        [vlo vhi] (or (:yr ve) (if (polysted-visual/pitch? (:vmo ve)) [-8192 8192] [0 127]))]
+        [vlo vhi] (or (:yr ve) (if (polysted.visual/pitch? (:vmo ve)) [-8192 8192] [0 127]))]
     {:gx gx :gy gy :gw gw :gh gh :vlo vlo :vhi vhi :xs (mapv #(+ gx (quot (* % gw) st)) cums)}))
 
 (defn vis-v->y "値 → y (表示範囲 :vlo〜:vhi をグラフの高さに)" [_vmo {:keys [gy gh vlo vhi]} v]
   (- (+ gy gh) (quot (* (- v vlo) gh) (max 1 (- vhi vlo)))))
 
 (defn vis-y->v "y → 値 (表示範囲の中に収める)" [vmo {:keys [gy gh vlo vhi]} y]
-  (polysted-visual/clamp-value vmo (-> (+ vlo (Math/round (/ (* (- (+ gy gh) y) (- vhi vlo)) (double gh))))
+  (polysted.visual/clamp-value vmo (-> (+ vlo (Math/round (/ (* (- (+ gy gh) y) (- vhi vlo)) (double gh))))
                                    (max vlo) (min vhi))))
 
 (defn vis-hit "x → 点の番号 (グラフの外なら端の点)" [{:keys [xs]} x]
@@ -653,7 +653,7 @@
   (let [vmo (:vmo ve)
         ve (-> ve (assoc-in [:para i] (vis-y->v vmo geom y)) (assoc :cx i))]
     (if (and prev (not= prev i))
-      (merge ve (select-keys (polysted-visual/line-between ve prev i vmo) [:para]))
+      (merge ve (select-keys (polysted.visual/line-between ve prev i vmo) [:para]))
       ve)))
 
 (defn paint-visual!
@@ -664,13 +664,13 @@
         st (total-st ve) co (count para)
         y (fn [v] (vis-v->y vmo geom v))
         {:keys [vlo vhi]} geom
-        base (-> (if (polysted-visual/pitch? vmo) (y 0) (+ gy gh)) (max gy) (min (+ gy gh)))
+        base (-> (if (polysted.visual/pitch? vmo) (y 0) (+ gy gh)) (max gy) (min (+ gy gh)))
         fm (.getFontMetrics g)]
     (.setRenderingHint g RenderingHints/KEY_TEXT_ANTIALIASING RenderingHints/VALUE_TEXT_ANTIALIAS_ON)
     (.setColor g bg) (.fillRect g 0 0 w h)
     ;; 状態 (原作の STEP= SUB= STEP TIME= PARA= TOTAL ST=)
     (.setColor g fg)
-    (.drawString g (str "CONTROLLER VISUAL EDIT  " (polysted-visual/kind-name vmo)
+    (.drawString g (str "CONTROLLER VISUAL EDIT  " (polysted.visual/kind-name vmo)
                         (when (#{0xDE 0xED} vmo) (str " (" (:vmo2 ve) ")"))
                         "   STEP=" (inc cx) "/" co (when ccx (str "  SUB=" (inc ccx)))
                         "   STEP TIME=" ((:step ve) cx) "   PARA=" (para cx) "   TOTAL ST=" st
@@ -685,7 +685,7 @@
       (.drawString g (str l) (int 8) (int (+ 4 (.getAscent fm) (* (inc i) (.getHeight fm))))))
     ;; 背景・目盛り
     (.setColor g (Color. 0x16 0x19 0x1E)) (.fillRect g gx gy gw gh)
-    (let [vals (cond (polysted-visual/pitch? vmo) (for [i (range -4 5)] (quot (* i vhi) 4))   ; 0 を中心に 8 等分
+    (let [vals (cond (polysted.visual/pitch? vmo) (for [i (range -4 5)] (quot (* i vhi) 4))   ; 0 を中心に 8 等分
                      (:yr ve) (range vlo (inc vhi) 8)
                      :else (range 0 128 16))]
       (doseq [v vals]
@@ -722,13 +722,13 @@
   [s mark mode-text]
   (let [recs (ss/cur-recs s) pos (:pos s) cur (get recs pos)
         maxst (* 8 (ss/bar-length s))
-        m (polysted-visual/parse-mode mode-text cur)
-        m (cond-> m (= 0x98 (:vmo m)) (assoc :exc (polysted-visual/exc-tail recs pos)))]
+        m (polysted.visual/parse-mode mode-text cur)
+        m (cond-> m (= 0x98 (:vmo m)) (assoc :exc (polysted.visual/exc-tail recs pos)))]
     (cond
       (:error m) m
       mark
       (let [lo (min mark pos) hi (max mark pos)
-            {:keys [para step matched st]} (polysted-visual/read-points recs lo (inc hi) (:vmo m))
+            {:keys [para step matched st]} (polysted.visual/read-points recs lo (inc hi) (:vmo m))
             sum (reduce + step)]
         (cond
           (and (zero? matched) (> st 1)) {:new (assoc m :from lo :fixed-st (min st maxst))}
@@ -736,19 +736,19 @@
           (or (> (count para) 768) (> sum maxst)) {:error "データが多すぎます。"}
           :else {:ve (merge m {:para para :step step :cx 0 :ccx nil :from lo :len (inc (- hi lo))
                                :ost sum :changed? false :maxst maxst})}))
-      :else {:new (assoc m :from pos :st-default (polysted-visual/default-total-st cur (ss/bar-length s)))})))
+      :else {:new (assoc m :from pos :st-default (polysted.visual/default-total-st cur (ss/bar-length s)))})))
 
 (defn visual-new
   "新規の点を作る (純粋)。st-text・co-text は TOTAL ST と COUNT の入力。=> {:ve} か {:error}"
   [s {:keys [vmo vmo2 exc from]} st-text co-text]
   (let [maxst (* 8 (ss/bar-length s))
         st (parse-long (str/trim (str st-text)))
-        co (when st (polysted-visual/parse-count co-text st))]
+        co (when st (polysted.visual/parse-count co-text st))]
     (cond
       (not (and st (<= 2 st maxst))) {:error (str "TOTAL ST は 2〜" maxst " です")}
-      (not (polysted-visual/count-ok? co st)) {:error (str "COUNT は 2〜" (min st 768) " です")}
+      (not (polysted.visual/count-ok? co st)) {:error (str "COUNT は 2〜" (min st 768) " です")}
       :else {:ve (merge {:vmo vmo :vmo2 vmo2 :exc exc :cx 0 :ccx nil :from from :len 0 :ost st :changed? false :maxst maxst}
-                        (polysted-visual/new-points (ss/cur-recs s) from vmo st co))})))
+                        (polysted.visual/new-points (ss/cur-recs s) from vmo st co))})))
 
 (defn render-image
   "画面を画像に描く (テスト・確認用。画面の無い環境でも動く)"
@@ -795,7 +795,7 @@
 
 (defn- open-file! [path]
   (let [song-msg (if (str/ends-with? (str/lower-case path) ".edn")
-                   {:song (polysted-edn/load-song path) :warnings []}
+                   {:song (polysted.edn/load-song path) :warnings []}
                    (ss/song-from-file path))
         s (cond-> (ss/new-session (:song song-msg))
             (str/ends-with? (str/lower-case path) ".edn") (assoc :file path)
@@ -819,7 +819,7 @@
   ([frame ve barlen on-done] (open-visual! frame ve barlen on-done {}))
   ([frame ve barlen on-done {:keys [modal? on-preview] :or {modal? true}}]
    (let [state (atom ve) prev (atom nil)
-         dlg (JDialog. ^JFrame frame (str "コントローラのビジュアルエディット — " (polysted-visual/kind-name (:vmo ve))) (boolean modal?))
+         dlg (JDialog. ^JFrame frame (str "コントローラのビジュアルエディット — " (polysted.visual/kind-name (:vmo ve))) (boolean modal?))
          font (mono-font 13)
          panel (proxy [JPanel] []
                  (paintComponent [^Graphics2D g]
@@ -899,7 +899,7 @@
           (:ve b) (open-visual! frame (:ve b) (ss/bar-length s) done {:on-preview preview})
           :else
           (let [nw (:new b)
-                kind (polysted-visual/kind-name (:vmo nw))
+                kind (polysted.visual/kind-name (:vmo nw))
                 st-text (or (some-> (:fixed-st nw) str) (ask (str kind "  TOTAL ST=") (:st-default nw)))
                 st (some-> st-text str/trim parse-long)
                 co-text (when st-text (ask (str kind "  TOTAL ST=" st-text "  COUNT= (/n で ST÷n、%n で ST×n÷100)")
@@ -986,7 +986,7 @@
         (menu-item mplay "再生 / 停止" "F12" (fn [] (key! \p)))
         (menu-item mplay "カーソルの小節から再生" nil (fn [] (key! \P)))
         (menu-item mplay "停止" nil (fn [] (ss/stop!) (refresh!)))
-        (menu-item mplay "レコーディング (Ctrl-X rec)" nil (fn [] (swap! ui-state polysted-tui-screens/open-record) (refresh!)))
+        (menu-item mplay "レコーディング (Ctrl-X rec)" nil (fn [] (swap! ui-state polysted.tui-screens/open-record) (refresh!)))
         (menu-item mhelp "キー操作の一覧" nil (fn [] (key! \?)))
         (doseq [m [mfile medit mview mplay mhelp]] (.add mb m))
         (.setJMenuBar frame mb)
@@ -1174,8 +1174,12 @@
           [true true]]]
         bad (remove (fn [[_ a e]] (= a e)) checks)]
     (if (empty? bad)
-      (println (str "polysted-gui: OK " (count checks) "件"))
+      (println (str "polysted.gui: OK " (count checks) "件"))
       (doseq [[l a e] bad] (println "NG" l "期待" e "実際" a)))
     (empty? bad)))
 
-(run-checks)
+(defn -main
+  "clojure -M:gui [file]  GUI を単体で起動する (ウィンドウを閉じると終了)"
+  [& args]
+  (ss/open-at-start! (first args))
+  (run! {:exit-on-close? true}))
