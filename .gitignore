@@ -1,0 +1,11 @@
+# REPL history
+.rebel_readline_history
+
+# Exclude all files in samples/ except .clj files
+samples/*
+!samples/**/
+!samples/*.clj
+!samples/**/*.clj
+.cpcache/
+song.edn
+*.mid

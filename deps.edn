@@ -1,0 +1,9 @@
+;; REPL を起動するためのエイリアスだけを置く (ソースは load-file で読むので :paths は使わない)
+;;   clojure -M:rebel    rebel-readline の REPL (起動後に (load-file "polysted_all.clj"))
+;;   clojure -M:polysted     polysted_all.clj で全部読み込んでから rebel-readline の REPL
+{:paths []
+ :aliases
+ {:rebel {:extra-deps {com.bhauman/rebel-readline {:mvn/version "0.1.4"}}
+          :main-opts ["-m" "rebel-readline.main"]}
+  :polysted  {:extra-deps {com.bhauman/rebel-readline {:mvn/version "0.1.4"}}
+          :main-opts ["-i" "polysted_all.clj" "-m" "rebel-readline.main"]}}}
