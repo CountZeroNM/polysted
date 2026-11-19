@@ -16,7 +16,8 @@ DISPLAY=:0 clojure -M:check     # 全部の run-checks。NG が 1 つでもあ�
 ```
 - 各名前空間の `run-checks` は読み込んだだけでは走らない。REPL では `(polysted.check/run-all)` か `(polysted.edit/run-checks)` など。
 - TUI の対話確認は実端末がないので、Python の `pty.fork()` で `clojure -M:tui x.edn` を起動し、キーを書き込んで画面出力を確認する(一時スクリプトは scratchpad に置く)。
-- 静的解析: `clojure -Sdeps '{:deps {clj-kondo/clj-kondo {:mvn/version "2024.08.01"}}}' -M -m clj-kondo.main --lint src dev samples`(警告 0 を保つ)。
+- 静的解析: `clojure -Sdeps '{:deps {clj-kondo/clj-kondo {:mvn/version "2024.08.01"}}}' -M -m clj-kondo.main --lint src dev samples examples`(警告 0 を保つ)。
+- サンプル曲 `examples/*.edn` は `clojure -M examples/make_examples.clj` で作り直す(手で直さない)。公開するので、曲は自作か著作権の切れた曲だけ。
 - `polysted.gui` は AWT を使うので、Claude Code の環境では `DISPLAY=:0` を付けて実行する(既定の `DISPLAY=wayland-0` では X に繋がらない。付けないと `:check` は GUI を飛ばす)。GUI の対話確認は、同じ JVM で `polysted.gui/run!` を開き、パネルに合成した `KeyEvent`/`MouseEvent` を送って、フレームを画像に描いて見る。
 - 出力に `NG` が無いことを確認する。音は Claude Code からは確認できないので、再生確認はユーザーに頼む。
 

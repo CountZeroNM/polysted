@@ -33,6 +33,12 @@ cd polysted
 clojure -M:tui my_song.edn         # 新しい曲を TUI で開く（保存先は my_song.edn）
 ```
 
+まず聴いてみるなら、サンプル曲を開いて `p` で再生します（[`examples/`](examples): きらきら星・メヌエット ト長調・エイトビート）。
+
+```bash
+clojure -M:tui examples/01_kirakira.edn
+```
+
 1. **音を入れる**: `n` を押して `C4 E G C5` と打ち、`Enter`。カーソル位置に 4 音が入ります（`m` なら MML: `l8 cdefgab<c`）。
 2. **STED2 風に 1 行ずつ入れる**: `:` で直接入力モード。`Enter` で空欄の行ができ、`C4` `Space` `48` `Enter` のように K# → ST と入れていきます。`F5`（または `Alt+5`）で 4 分音符の長さ。
 3. **直す**: `↑↓` で行を選び、`x` で削除、`u` で元に戻す。直接入力モードでは数字や `+` `-` で欄の値を変えられます。
@@ -125,6 +131,7 @@ flowchart TD
 | [`src/polysted/record.clj`](src/polysted/record.clj) | レコーディングの変換（MIDI 入力 → レコード、トラックへの書き込み。純粋関数、原作 RECORD.C） |
 | [`src/polysted/roll.clj`](src/polysted/roll.clj) | ピアノロールの計算（音符の位置・小節線・クリックの当たり判定・表示範囲。純粋関数） |
 | [`実装状況と仕様.md`](実装状況と仕様.md) | STED2 の C ソースの解析に基づく仕様の調査（【確認】【推測】【設計判断】の区別つき）、実装状況、検証ログ |
+| [`examples/`](examples) | サンプル曲（EDN）3 曲と、それを組み立てるスクリプト `make_examples.clj`。SAME・調号・リピート・リズムトラックの例 |
 | [`samples/summarize.clj`](samples/summarize.clj) | RCP ファイルの中身を要約する診断スクリプト（サンプルの曲データは同梱していません） |
 | [`doc/original/`](doc/original) | 原作 STED2 のソース公開時の文書（`追悼.DOC`・`STED207M.HIS`。原文と UTF-8 の読み物版） |
 | [`LICENSE`](LICENSE) | polysted のライセンス（MIT） |
