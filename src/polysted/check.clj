@@ -9,7 +9,7 @@
   "チェックする名前空間 (依存の少ない順)"
   '[polysted.notename polysted.edn polysted.smf polysted.replace polysted.rhythm polysted.ctrl
     polysted.roll polysted.visual polysted.score polysted.record polysted.edit polysted.session
-    polysted.tui polysted.gui])
+    polysted.tui polysted.gui polysted.main])
 
 (defn- root-message [^Throwable e]
   (.getMessage ^Throwable (loop [c e] (if-let [n (.getCause ^Throwable c)] (recur n) c))))

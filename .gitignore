@@ -10,3 +10,4 @@ samples/*
 song.edn
 *.mid
 .claude/settings.local.json
+target/

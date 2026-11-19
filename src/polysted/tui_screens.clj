@@ -436,7 +436,7 @@
          :rc (or (:rc ui) {:ch (inc (bit-and (dec (or (:ch (ss/cur-track (:s ui))) 1)) 15)) :thru? true :metronome? true :top 1 :btm 999})))
 
 (defn rc-key
-  "レコーディングの画面のキー (原作の C 録音チャンネル、O 入力をそのまま出す、M メトロノーム、S 録音する小節、
+  "レコーディングの画面のキー (原作の C 録音チャンネル、O 入力をそのまま出す、M メトロノーム、S 録音する小節、I 入力の機器、
    Enter・Space で開始、録音中は Esc・Enter・Space で止めて取り込む)"
   [ui key]
   (if (ss/recording?)
@@ -445,6 +445,7 @@
       (\c \C) (assoc ui :mode :input :kind :rc-ch :buf (str (get-in ui [:rc :ch])))
       (\o \O) (update-in ui [:rc :thru?] not)
       (\m \M) (update-in ui [:rc :metronome?] not)
+      (\i \I) (update ui :effects conj [:rc-next-input])                ; 入力の機器を切り替える (一覧は perform で取る)
       (\s \S) (assoc ui :mode :input :kind :rc-meas :buf (str (get-in ui [:rc :top]) " " (get-in ui [:rc :btm])))
       (:enter \space) (update ui :effects conj [:record-start (:rc ui)])
       :esc (assoc ui :screen :edit)
@@ -463,7 +464,7 @@
   "レコーディングの画面"
   [ui]
   (let [{:keys [rows cols s]} ui
-        {:keys [ch thru? metronome? top btm]} (:rc ui)
+        {:keys [ch thru? metronome? top btm device]} (:rc ui)
         song (:song s)
         trs (ss/rec-tracks s)
         ins (ss/midi-inputs)
@@ -472,7 +473,11 @@
                     [" REALTIME RECORDING" ""
                      (str " RECORDING CH.: " ch "   OUT MODE: " (if thru? "THRU" "OFF") "   METORO: " (if metronome? "ON" "OFF"))
                      (str " RECORD MEAS: " top " - " btm "   TEMPO: " (:tempo song 120) "   BEAT: " (let [[a b] (:time-sig song [4 4])] (str a "/" b)))
-                     (str " MIDI IN: " (if (seq ins) (:name (first ins)) "(見つかりません)"))
+                     (let [names (mapv :name ins)]
+                       (str " MIDI IN: " (if (seq names)
+                                           (str (if (some #{device} names) device (ss/default-input names))
+                                                (when (> (count names) 1) (str "   (I で切り替え、" (count names) " 台)")))
+                                           "(見つかりません)")))
                      (str " 録音するトラック: " (if (seq trs)
                                                  (str/join " " (map #(str "TR" (inc %) "(" (sc/mode-str (get-in song [:tracks %])) ")") trs))
                                                  "なし (Tab のトラック設定で MODE を Mix か Rec に)"))
@@ -482,5 +487,5 @@
                            :else (str " 待機中   Enter・Space で開始" (if (= 1 top) " (2 小節のカウントの後から)" "")))]
                     (repeat (max 0 (- rows 11)) "")
                     [(screen-status ui)
-                     "C 録音チャンネル  O 入力をそのまま出す  M メトロノーム  S 録音する小節  Enter 開始  Esc 戻る"]))]
+                     "C 録音チャンネル  O 入力をそのまま出す  M メトロノーム  S 録音する小節  I 入力の機器  Enter 開始  Esc 戻る"]))]
     {:lines (mapv #(cut-width % cols) (take rows lines)) :cursor-line nil :cursor-span nil :range-lines #{}}))

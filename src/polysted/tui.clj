@@ -865,6 +865,7 @@
       ;; トラックエクスクルーシブのテキストファイル .EXC
       ;; レコーディング
       :record-start (set-msg ui (:msg (ss/record-start! (:s ui) arg)))
+      :rc-next-input (assoc-in ui [:rc :device] (ss/next-input (mapv :name (ss/midi-inputs)) (get-in ui [:rc :device])))
       :record-stop (-> ui (update :s ss/record-stop!) (assoc :screen :edit))
       :exc-load (let [msgs (sc/parse-exc-text (slurp arg :encoding "ISO-8859-1"))]
                   (when (nil? msgs) (throw (ex-info "EXC ファイルの中身が不正です (16進 00〜7F と gt ve ch cs ss、F0 〜 F7)" {})))

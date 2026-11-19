@@ -956,6 +956,14 @@
         (menu-item mfile "開く…" "control O" (fn [] (when-let [p (choose-file frame false)]
                                                      (try (open-file! p) (catch Exception e (JOptionPane/showMessageDialog frame (str "開けません: " (.getMessage e)))))
                                                      (refresh!))))
+        (let [ms (JMenu. "サンプル曲を開く")]
+          (doseq [[label file] ss/samples]
+            (menu-item ms label nil (fn [] (if-let [song (ss/sample-song file)]
+                                             (do (reset! ss/S (ss/new-session song))
+                                                 (swap! ui-state #(merge (tb/new-ui @ss/S) (select-keys % [:rows :cols]))))
+                                             (JOptionPane/showMessageDialog frame (str "サンプル曲が見つかりません: " file)))
+                                           (refresh!))))
+          (.add mfile ms))
         (menu-item mfile "保存" "control S" (fn [] (when-let [p (or (:file (:s @ui-state)) (choose-file frame true))]
                                                     (run-effect! [:save p]) (refresh!))))
         (menu-item mfile "名前を付けて保存… (.edn .rcp .r36 .mid)" "control shift S"

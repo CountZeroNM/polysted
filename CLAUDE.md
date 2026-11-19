@@ -8,6 +8,7 @@
 ## 構成
 - ソースは `src/polysted/*.clj`(名前空間 `polysted.xxx`、`tui-base` などハイフンの名前はファイル名では `_`)。各名前空間は使う名前空間を `:require` で読む。
 - `dev/user.clj` は REPL の user 名前空間(`s` が `polysted.session`)。`deps.edn` のエイリアス: `:tui` `:gui` `:check` `:dev` `:repl`。
+- 配布用の jar: `clojure -T:build uber`(`build.clj`。版の番号は `build.clj` の `version`。`../vmidikey/target/vmidikey-device.jar` を同梱するので、先に vmidikey で `bb device`)。起動の入口は `polysted.main`。リリースはタグ `v<版>` を push すると `.github/workflows/release.yml` が Releases に置く(タグを打つ前にユーザーに確認する)。
 - 新しい名前空間を足したら、`src/polysted/check.clj` の `check-nss` と、README の「ファイル構成」・`doc/機能目録.md` の 1.2 を直す。
 
 ## 動作確認

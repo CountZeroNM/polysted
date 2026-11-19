@@ -1,0 +1,60 @@
+# 配布用の jar を作り、タグ (v0.1.0 など) を push したら GitHub の Releases に置く。
+# 手動の実行 (Actions の画面の Run workflow) では、Releases には置かず、成果物 (artifact) として残す。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: polysted
+      # 仮想 MIDI キーボード VMidiKey の機器を同梱するため、同じ階層に vmidikey を置く (deps.edn の :vmidikey)
+      - uses: actions/checkout@v4
+        with:
+          repository: CountZeroNM/vmidikey
+          path: vmidikey
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Clojure CLI を入れる
+        run: |
+          curl -fsSL -O https://github.com/clojure/brew-install/releases/latest/download/linux-install.sh
+          chmod +x linux-install.sh && sudo ./linux-install.sh
+      - name: VMidiKey の機器の jar (bb device と同じ)
+        working-directory: vmidikey
+        run: |
+          mkdir -p target/classes
+          javac --release 11 -encoding UTF-8 -d target/classes java/src/vmidikey/spi/*.java
+          cp -r java/resources/. target/classes/
+          jar cf target/vmidikey-device.jar -C target/classes .
+      - name: 版の番号がタグと合っているか
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: polysted
+        run: grep -q "(def version \"${GITHUB_REF_NAME#v}\")" build.clj
+      - name: 簡易チェック (画面が無いので GUI のチェックは飛ばす)
+        working-directory: polysted
+        run: clojure -J-Djava.awt.headless=true -M:check
+      - name: jar を作る
+        working-directory: polysted
+        run: clojure -T:build uber
+      - name: Releases に置く
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: polysted/target/polysted-*.jar
+      - name: 成果物として残す (手動の実行)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: polysted-jar
+          path: polysted/target/polysted-*.jar

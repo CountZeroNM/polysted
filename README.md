@@ -15,8 +15,29 @@ STED2 の「**4 バイト固定長レコード (`[b0 b1 b2 b3]`)**」による�
 2. **多くの人の手を渡ってきた系譜への、敬意と感謝**
    カモンミュージックのレコンポーザが形作った RCP の世界。故 TURBO 氏（戸田貴之氏）が生み出した STED2。作者亡き後、ご両親の承諾を得てソースを公開した「ゆいＮＥＴ」の方々。そして、ソースの保存・公開や、形式の解析・変換ツールを通じて、その遺産を受け継いできた多くの人たち。polysted は、こうした人々の仕事に強く影響を受けて生まれました。
 
+## ダウンロードして試す（Clojure の開発環境は不要）
+
+[Releases](https://github.com/CountZeroNM/polysted/releases) から `polysted-0.1.0.jar`（約 7MB）をダウンロードして、そのまま動かせます。必要なのは **Java 17 以上**だけです（Java 21 で確認しています）。Java が入っていなければ、[Adoptium（Temurin）](https://adoptium.net/ja/) などから入れてください。
+
+```bash
+java -jar polysted-0.1.0.jar                 # ウィンドウ (GUI) が開く。ダブルクリックでも同じ
+java -jar polysted-0.1.0.jar --tui           # 端末で使う (TUI)
+java -jar polysted-0.1.0.jar --repl          # REPL。(s/sample! 1) でサンプル曲、(s/play!) で再生
+java -jar polysted-0.1.0.jar --help          # 使い方
+```
+
+- まずは、メニューの「ファイル → サンプル曲を開く」で曲を開き、`p`（か F12）で再生してみてください。
+- MIDI キーボードが無くても、仮想 MIDI キーボード [VMidiKey](https://github.com/CountZeroNM/vmidikey/releases) の jar を一緒に起動すれば、録音を試せます（VMidiKey の受け口は polysted の jar に入っています）。手順は「[レコーディング](#レコーディングctrl-x-recgui-は再生メニューにも原作の-realtime-recording)」へ。
+- **Windows**: Temurin を入れるときに「.jar の関連付け」を選んでおくと、ダブルクリックで開きます。
+- **macOS**: ダウンロードした jar は「開発元を確認できない」と止められることがあります。Control キーを押しながらクリックして「開く」を選ぶか、ターミナルから `java -jar` で起動してください。
+- **ChromeOS の Linux**: ウィンドウが開かず `Can't connect to X11 window server` と出るときは、`DISPLAY=:0 java -jar polysted-0.1.0.jar` で起動してください。
+- マインクラフト（Java 版）のランチャーに入っている Java は、ランチャーの中だけのもので、パソコン全体からは使えません。MOD のインストールのために Java を入れている人は、そのまま使えます。
+
+自分で jar を作るときは、vmidikey を同じ階層に clone して `bb device` を実行してから、`clojure -T:build uber`（`target/polysted-<版>.jar`）。タグ `v*` を push すると、GitHub Actions が jar を作って Releases に置きます。
+
 ## 目次
 
+- [ダウンロードして試す](#ダウンロードして試すclojure-の開発環境は不要)
 - [はじめての操作（5 分ガイド）](#はじめての操作5-分ガイド)（ウィンドウで使うなら `clojure -M:gui`）
 - [名前について](#名前について--polysted) / [背景と設計思想](#背景と設計思想) / [ファイル構成](#ファイル構成) / [必要環境](#必要環境)
 - [クイックスタート](#クイックスタート)（REPL・TUI・音名入力・RCP・SMF）
@@ -124,6 +145,8 @@ flowchart TD
 | [`doc/機能目録.md`](doc/機能目録.md) | **機能目録**: 41 の機能ごとに、操作・実装の場所・原作の根拠・Clojure の学習ポイント・章立ての案・改善の候補。改造の地図と連載の章立て案つき |
 | [`dev/user.clj`](dev/user.clj) | REPL の user 名前空間（`clojure -M:repl` / `clojure -M:dev` で自動で読み込まれ、`s` が `polysted.session` の別名に） |
 | [`deps.edn`](deps.edn) / [`repl.bb`](repl.bb) | 起動のエイリアス: `clojure -M:tui [file]`・`-M:gui [file]`・`-M:repl`（rebel-readline）・`-M:dev`・`-M:check`、`bb repl.bb [--plain]` |
+| [`src/polysted/main.clj`](src/polysted/main.clj) | 配布用の jar の起動の入口（`java -jar polysted.jar` で GUI、`--tui` `--repl` `--check` `--version`） |
+| [`build.clj`](build.clj) / [`.github/workflows/release.yml`](.github/workflows/release.yml) | 配布用の jar を作る（`clojure -T:build uber`）/ タグ `v*` を push すると jar を作って Releases に置く |
 | [`src/polysted/check.clj`](src/polysted/check.clj) | 全部の名前空間の簡易チェック（`run-checks`）を順に実行する（`clojure -M:check`、NG があれば終了コード 1） |
 | [`src/polysted/gui.clj`](src/polysted/gui.clj) | GUI 層（Swing。画面とキー操作は TUI と共通、メニュー・ファイル選択・マウス・ウィンドウの大きさに追従） |
 | [`src/polysted/visual.clj`](src/polysted/visual.clj) | コントローラのビジュアルエディットの計算（種類の解釈・点の読み込み・波形・行への書き出し。純粋関数） |
@@ -302,16 +325,20 @@ clojure -M:tui song.mid         # SMF を開く
 MIDI キーボードなどの入力を、MODE が **Mix**（既存のデータに混ぜる）か **Rec**（録音する小節を置き換える）のトラックへ録音します。
 
 1. `Tab` のトラック設定画面で、録音するトラックの MODE を `Enter` で Mix か Rec にします（Rec のトラックは録音中も鳴りません）。
-2. `Ctrl-X` で `rec` と入力すると、録音の画面になります。`C` 録音チャンネル、`O` 入力をそのまま音源へ出す（THRU）、`M` メトロノーム、`S` 録音する小節（開始 終わり）を設定します。
+2. `Ctrl-X` で `rec` と入力すると、録音の画面になります。`C` 録音チャンネル、`O` 入力をそのまま音源へ出す（THRU）、`M` メトロノーム、`S` 録音する小節（開始 終わり）、`I` 入力の機器を設定します。
 3. `Enter` か `Space` で開始します。1 小節目からなら 2 小節のカウントの後から録音します。ほかのトラック（Play・Mix）とメトロノーム（ch16 のキー 64、拍頭が強い）が鳴ります。
 4. `Esc`（か `Enter`・`Space`）で止めると、録音したデータをトラックに書き込みます（`u` で元に戻せます）。終わりの小節に達すると演奏は止まり、`Esc` で取り込みます。
 5. **録音したトラックを聴くときは、MODE を Play か Mix に戻します**（原作どおり Rec と Mute のトラックは再生で鳴りません）。取り込んだときと、鳴らないトラックで再生を始めたときに、メッセージ行に案内が出ます。
 
 - 録音するトラックが 1 つなら録音チャンネルの入力を、複数ならそれぞれのトラックのチャンネルの入力を入れます。
 - ノートはノートオフまでを GT にし、小節線を入れ、最後にタイ圧縮をかけます。コントロールチェンジ・プログラム・ベンド・アフタータッチ・エクスクルーシブ（Roland の DT1 は DF DD DE の行）も入れます。
-- MIDI 入力の機器は Java（javax.sound.midi）が見つけたものの最初の 1 つを使います。見つからなければメッセージが出ます。
+- MIDI 入力の機器は、録音の画面の `I` で切り替えます。既定は、仮想 MIDI キーボード VMidiKey 以外の機器（本物の MIDI キーボードなど）の最初の 1 つ、無ければ VMidiKey です。見つからなければメッセージが出ます。
 
 ##### MIDI キーボードが無いとき: 仮想 MIDI キーボード VMidiKey
+
+**配布用の jar で試す（いちばん簡単）**: [polysted](https://github.com/CountZeroNM/polysted/releases) と [VMidiKey](https://github.com/CountZeroNM/vmidikey/releases) の jar を両方ダウンロードし、`java -jar vmidikey-0.1.0.jar` と `java -jar polysted-0.1.0.jar` で両方を起動します。polysted の jar には VMidiKey の受け口が入っているので、録音の画面の MIDI IN に `VMidiKey` が出ます（本物の MIDI キーボードもつないでいるときは、そちらが既定。`I` で切り替え）。あとは下の 3. と同じです。
+
+**ソースから使う**:
 
 [VMidiKey](https://github.com/CountZeroNM/vmidikey) は、パソコンの文字キーと画面の鍵盤で弾ける、仮想 MIDI キーボードです（別のプロジェクト、MIT License）。VMidiKey の小さな jar を polysted の classpath に足すと、polysted からは普通の MIDI 入力の機器「VMidiKey」として見えるので、MIDI キーボードが無くても、また ChromeOS の Linux のように仮想 MIDI の機器が使えない環境でも、録音を試せます。
 
@@ -339,7 +366,7 @@ MIDI キーボードなどの入力を、MODE が **Mix**（既存のデータ�
 3. 上の手順どおり、トラックの MODE を Rec か Mix にして `Ctrl-X rec` → `Enter` で録音を始め、VMidiKey のウィンドウで弾きます（`Z` が C、`Q` が 1 オクターブ上の C。`←` `→` でオクターブ）。`Esc` で止めて取り込みます。
 
 - 確かめ方: REPL（`clojure -M:vmidikey:repl`）で `(mapv :name (s/midi-inputs))` が `["VMidiKey"]` を返せば、つながっています。
-- 本物の MIDI キーボードもつないでいると、Java が見つけた順の最初の機器が使われます。VMidiKey を使うときは、ほかの機器を外すか、`:vmidikey` を付けずに起動し分けてください。
+- 本物の MIDI キーボードもつないでいると、既定ではそちらを使います。録音の画面の `I` で、VMidiKey と切り替えられます。
 - jar を作っていないのに `:vmidikey` を付けると、`clojure` が `vmidikey/device` を見つけられないというエラーで止まります。`:vmidikey` を付けなければ、ほかの起動には影響しません。
 - ポートは、両方の JVM でシステムプロパティ `vmidikey.port` か環境変数 `VMIDIKEY_PORT` で変えられます（同じ値にします）。
 

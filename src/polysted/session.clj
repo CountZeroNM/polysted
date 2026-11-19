@@ -11,6 +11,7 @@
 (ns polysted.session
   (:refer-clojure :exclude [replicate])
   (:require [clojure.string :as str]
+            [clojure.java.io :as io]
             [polysted.mml] [polysted.rcp] [polysted.edit] [polysted.notename] [polysted.edn] [polysted.smf] [polysted.replace] [polysted.rhythm] [polysted.roll] [polysted.visual] [polysted.record])
   ;; コントローラ・調などの純粋関数は src/polysted/ctrl.clj に分けた (名前はそのまま使う)
   (:require [polysted.ctrl :refer [ctrl-cells ctrl-insert-fields exc-hex key-shift-str key-str mode-str parse-ch
@@ -1242,6 +1243,26 @@
   (reset! S (assoc (new-session (polysted.edn/load-song path)) :file path))
   (show))
 
+(def samples
+  "サンプル曲 (examples/*.edn。配布用の jar では polysted/examples/ に入れる)"
+  [["きらきら星 (フランス民謡)" "01_kirakira.edn"]
+   ["メヌエット ト長調 BWV Anh.114" "02_minuet_g.edn"]
+   ["Eight Beat (オリジナル)" "03_eight_beat.edn"]])
+
+(defn sample-song
+  "サンプル曲のファイル名 → 曲。jar の中 (polysted/examples/) か、開発時は examples/ から読む。無ければ nil"
+  [file]
+  (when-let [src (or (io/resource (str "polysted/examples/" file))
+                     (let [f (io/file "examples" file)] (when (.exists f) f)))]
+    (polysted.edn/edn-str->song (slurp src :encoding "UTF-8"))))
+
+(defn sample!
+  "サンプル曲を開く: (s/sample! 1) はきらきら星。保存先は決めない (保存するときは (s/save! \"x.edn\"))"
+  [n]
+  (if-let [song (some-> (get samples (dec n)) second sample-song)]
+    (do (reset! S (new-session song)) (show))
+    (println "サンプル曲は 1〜" (count samples) ":" (str/join " / " (map-indexed #(str (inc %1) " " (first %2)) samples)))))
+
 (defn save!
   "曲を EDN で保存。パス省略時は最後に load!/save! したファイル。"
   ([] (if-let [path (:file @S)]
@@ -1376,6 +1397,20 @@
 ;; メトロノームは原作の既定 (ch16、キー 64、拍頭 127・ほか 117、GT 2) 【原作 STED2.CNF #rec_met の既定】。
 (defonce ^:private rec-state (atom nil))
 
+(defn default-input
+  "入力の機器の名前の列から、既定で使うもの。仮想 MIDI キーボード VMidiKey 以外 (本物の機器) があればその最初、
+   無ければ最初 (VMidiKey)。配布用の jar は VMidiKey の機器を同梱するので、本物の機器を優先する【設計判断】"
+  [names]
+  (or (first (remove #{"VMidiKey"} names)) (first names)))
+
+(defn next-input
+  "入力の機器の切り替え: 今の名前 cur (nil は既定) の次の名前。一覧が空なら nil"
+  [names cur]
+  (when (seq names)
+    (let [cur (or cur (default-input names))
+          i (.indexOf ^java.util.List (vec names) cur)]
+      (nth names (mod (inc i) (count names))))))
+
 (defn midi-inputs "MIDI 入力の機器 (送信できるもの。シーケンサと音源は除く)" []
   (vec (for [info (MidiSystem/getMidiDeviceInfo)
              :let [d (MidiSystem/getMidiDevice info)]
@@ -1414,11 +1449,12 @@
 
 (defn record-start!
   "録音を始める。opts: {:ch 録音チャンネル 1〜16 :thru? 入力を音源へも送る :metronome? :top 開始小節 :btm 終わりの小節
-   :device 入力の機器の名前 (nil なら最初のもの) :no-input? 入力の機器を使わない (テスト用)}。=> {:ok? :msg}"
+   :device 入力の機器の名前 (nil なら default-input) :no-input? 入力の機器を使わない (テスト用)}。=> {:ok? :msg}"
   [s {:keys [thru? metronome? top btm device no-input?] :or {top 1 btm 999} :as opts}]
   (stop!)
   (let [ins (midi-inputs)
-        in (if device (first (filter #(= device (:name %)) ins)) (first ins))]
+        dname (or device (default-input (map :name ins)))
+        in (first (filter #(= dname (:name %)) ins))]
     (cond
       (empty? (rec-tracks s)) {:ok? false :msg "レコーディングトラックが設定されていません (Tab のトラック設定で MODE を Mix か Rec に)"}
       (and (nil? in) (not no-input?)) {:ok? false :msg "MIDI 入力の機器が見つかりません"}
@@ -1552,6 +1588,14 @@
              [65 1]
              (let [s (-> (new-session) (assoc-in [:song :key] 1) (assoc-in [:song :tracks 0 :rhythm?] true))]
                [(first (first (cur-recs (insert-mml s "f")))) (get-in s [:song :key])])))
+    (check "入力の機器: 既定は VMidiKey 以外を優先、切り替えは順に一周"
+           ["USB MIDI" "VMidiKey" "VMidiKey" "USB MIDI" "VMidiKey" nil]
+           [(default-input ["VMidiKey" "USB MIDI"]) (default-input ["VMidiKey"])
+            (next-input ["VMidiKey" "USB MIDI"] nil) (next-input ["VMidiKey" "USB MIDI"] "VMidiKey")
+            (next-input ["VMidiKey"] nil) (next-input [] nil)])
+    (check "サンプル曲: examples/ の 3 曲が読める (トラック数)"
+           [3 2 3]
+           (mapv #(count (:tracks (sample-song (second %)))) samples))
     (check "音名入力: 無効なトークンは捨てて :msg に残す"
            [[[60 48 46 64]] "無効な音名: X"]
            (let [s (insert-notes (new-session) "C4 X")] [(cur-recs s) (:msg s)]))
