@@ -4,6 +4,7 @@
 ;;   clojure -M:repl           rebel-readline の REPL (dev/user.clj を読み込み、s が polysted.session)
 ;;   clojure -M:dev            普通の REPL (同上)
 ;;   clojure -M:check          全部の簡易チェック (NG があれば終了コード 1)
+;;   clojure -M:vmidikey:tui   仮想 MIDI キーボード VMidiKey を MIDI 入力の機器に足す (:gui :repl とも組み合わせられる。README の「レコーディング」)
 {:paths ["src"]
  :aliases
  {:tui   {:main-opts ["-m" "polysted.tui"]}
@@ -12,4 +13,7 @@
   :dev   {:extra-paths ["dev"]}
   :repl  {:extra-paths ["dev"]
           :extra-deps {com.bhauman/rebel-readline {:mvn/version "0.1.4"}}
-          :main-opts ["-m" "rebel-readline.main"]}}}
+          :main-opts ["-m" "rebel-readline.main"]}
+  ;; VMidiKey (https://github.com/CountZeroNM/vmidikey) の仮想 MIDI 入力の機器を classpath に足す。
+  ;; vmidikey を polysted と同じ階層に clone し、vmidikey で bb device を実行して jar を作っておく
+  :vmidikey {:extra-deps {vmidikey/device {:local/root "../vmidikey/target/vmidikey-device.jar"}}}}}

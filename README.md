@@ -311,6 +311,38 @@ MIDI キーボードなどの入力を、MODE が **Mix**（既存のデータ�
 - ノートはノートオフまでを GT にし、小節線を入れ、最後にタイ圧縮をかけます。コントロールチェンジ・プログラム・ベンド・アフタータッチ・エクスクルーシブ（Roland の DT1 は DF DD DE の行）も入れます。
 - MIDI 入力の機器は Java（javax.sound.midi）が見つけたものの最初の 1 つを使います。見つからなければメッセージが出ます。
 
+##### MIDI キーボードが無いとき: 仮想 MIDI キーボード VMidiKey
+
+[VMidiKey](https://github.com/CountZeroNM/vmidikey) は、パソコンの文字キーと画面の鍵盤で弾ける、仮想 MIDI キーボードです（別のプロジェクト、MIT License）。VMidiKey の小さな jar を polysted の classpath に足すと、polysted からは普通の MIDI 入力の機器「VMidiKey」として見えるので、MIDI キーボードが無くても、また ChromeOS の Linux のように仮想 MIDI の機器が使えない環境でも、録音を試せます。
+
+```
+ VMidiKey (キーボードのウィンドウ)  ──UDP 127.0.0.1:47100──→  polysted の JVM の中の機器「VMidiKey」 → 録音
+```
+
+1. vmidikey を **polysted と同じ階層に** clone し、機器の jar を作ります（JDK の `javac` と `jar`、babashka を使います）。
+
+   ```bash
+   cd ..                                   # polysted の親のフォルダ
+   git clone https://github.com/CountZeroNM/vmidikey.git
+   cd vmidikey
+   bb device                               # target/vmidikey-device.jar を作る
+   bb start                                # キーボードのウィンドウを開く (このまま開いておく)
+   ```
+
+2. 別の端末で、polysted を `:vmidikey` のエイリアスを付けて起動します（`deps.edn` が `../vmidikey/target/vmidikey-device.jar` を classpath に足します）。
+
+   ```bash
+   cd polysted
+   clojure -M:vmidikey:tui my_song.edn     # TUI。GUI なら -M:vmidikey:gui、REPL なら -M:vmidikey:repl
+   ```
+
+3. 上の手順どおり、トラックの MODE を Rec か Mix にして `Ctrl-X rec` → `Enter` で録音を始め、VMidiKey のウィンドウで弾きます（`Z` が C、`Q` が 1 オクターブ上の C。`←` `→` でオクターブ）。`Esc` で止めて取り込みます。
+
+- 確かめ方: REPL（`clojure -M:vmidikey:repl`）で `(mapv :name (s/midi-inputs))` が `["VMidiKey"]` を返せば、つながっています。
+- 本物の MIDI キーボードもつないでいると、Java が見つけた順の最初の機器が使われます。VMidiKey を使うときは、ほかの機器を外すか、`:vmidikey` を付けずに起動し分けてください。
+- jar を作っていないのに `:vmidikey` を付けると、`clojure` が `vmidikey/device` を見つけられないというエラーで止まります。`:vmidikey` を付けなければ、ほかの起動には影響しません。
+- ポートは、両方の JVM でシステムプロパティ `vmidikey.port` か環境変数 `VMIDIKEY_PORT` で変えられます（同じ値にします）。
+
 #### リズムパターン編集（`Ctrl-G`、原作のリズムトラックエディタ）
 
 トラック設定で RHY を ON にしたトラックで、カーソルのある小節を「ステップ × 楽器」の格子で編集します。楽器はリズム割り当て表の 32 音（表が空なら SC55.DEF の既定: Acou BD 36、Acou SD 38、Clsd HiHat 42 など）で、`Tab` で前半・後半の 16 音を切り替えます。
@@ -846,7 +878,7 @@ STED2 の画面・マニュアルに出てくる用語です。（　）内は�
 ## 残件
 
 - RCP v3（G36）の読み込みを、レコンポーザで作った実際の曲のファイルで確認する（合成サンプルと 2 つの資料では確認済み）。
-- レコーディングを、実際の MIDI 入力の機器（USB の MIDI キーボードなど）で確認する（仮想の MIDI 入力の機器を経由しては確認済み）。
+- レコーディングを、実際の MIDI 入力の機器（USB の MIDI キーボードなど）で確認する（仮想 MIDI キーボード [VMidiKey](https://github.com/CountZeroNM/vmidikey) の機器を経由しては確認済み）。
 
 ## トラブルシューティング
 
