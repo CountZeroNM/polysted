@@ -135,9 +135,13 @@
     (assoc s :msg "削除行バッファは空です")))
 
 (defn mml-defaults
-  "STED2 と同じ: カーソル直前の最も近いノート/休符から ST GT vel を引き継ぐ"
+  "カーソル直前の最も近い発音ノート (休符は飛ばす) から ST GT vel を引き継ぐ。
+   原作 mml_inp は休符からも引き継ぐので、休符 (vel 0) の後では vel が 64 に戻る。
+   休符は強弱を持たないので飛ばし、休符をはさんでも ST GT vel が続くようにした【設計判断】"
   [recs pos]
-  (if-let [r (->> (subvec recs 0 pos) reverse (filter #(< (% 0) 0x80)) first)]
+  (if-let [r (->> (subvec recs 0 pos) reverse
+                  (filter (fn [r] (and (< (r 0) 0x80) (pos? (r 2)) (pos? (r 3)))))
+                  first)]
     (let [st  (if (zero? (r 1)) 48 (r 1))
           gt  (if (and (zero? (r 2)) (> st 2)) (- st 2) (r 2))
           vel (if (zero? (r 3)) 64 (r 3))]
@@ -1605,6 +1609,24 @@
     (check "長さは直前のノートから引き継ぐ (c8 のあとの d は8分)"
            [[60 24 22 64] [62 24 22 64]]
            (-> (new-session) (insert-mml "c8") (insert-mml "d") cur-recs))
+    (check "付点: a2. は 96+48=144、l4. は 72 (GT は ST-2)、r8. は 36、c4.. は 48+24+12=84"
+           [[69 144 142 64] [60 72 70 64] [0 36 0 0] [62 84 82 64]]
+           (-> (new-session) (insert-mml "o4 a2. l4. c r8. d4..") cur-recs))
+    (check "付点: 長さの無い音名の後の . は今の既定の ST に付く (c8 は c だけ 8分なので d. は 4分の付点 72、l8 の後の e. は 36)、1. は 255 を超えるので付けない"
+           [[60 24 22 64] [62 72 70 64] [64 36 34 64] [65 192 190 64]]
+           (-> (new-session) (insert-mml "o4 c8 d. l8 e. f1.") cur-recs))
+    (check "付点: o. は従来どおりオクターブ -1 (付点にしない)"
+           [[0 48 46 64]]
+           (-> (new-session) (insert-mml "o. c") cur-recs))
+    (check "引き継ぎは休符を飛ばす: v80 l8 c r4 のあと d は 8分・vel 80 (原作は休符から引き継ぎ 4分・vel 64)"
+           [62 24 22 80]
+           (-> (new-session) (insert-mml "v80 l8 c r4") (insert-mml "d") cur-recs last))
+    (check "引き継ぎは休符を飛ばす: 小節線と休符の後の音名入力も vel 80"
+           [64 24 22 80]
+           (-> (new-session) (insert-mml "v80 l8 c r4") insert-measure (insert-mml "r8") (insert-notes "E4") cur-recs last))
+    (check "引き継ぎ: 休符しか無いときは既定値 (ST 48 GT 46 vel 64)"
+           [62 48 46 64]
+           (-> (new-session) (insert-mml "r8 r8") (insert-mml "d") cur-recs last))
     (check "最適化: 連続する休符が前に結合される"
            [[60 96 46 64]]
            (-> (new-session) (insert-mml "c4 r8 r8") optimize cur-recs))

@@ -19,11 +19,26 @@
             (repeat (if flat? -1 1)))))
 
 ;; ------------------------------------------------------------
-;; MML パーサ (KEY_SUB.C mml_inp の仕様どおり)
+;; MML パーサ (KEY_SUB.C mml_inp の仕様どおり。付点だけは原作に無い拡張【設計判断】)
 ;; ------------------------------------------------------------
 (defn- read-int [s i]
   (let [d (re-find #"^\d*" (subs s i))]
     [(when (seq d) (Long/parseLong d)) (+ i (count d))]))
+
+(defn dotted
+  "付点: ST x に、続く . の数だけ半分ずつ足す (x=48 で . 1つなら 72、2つなら 84)。
+   原作 mml_inp に付点は無い (. は読めない文字として捨てる)。楽譜の音価をそのまま書けるよう足した【設計判断】。
+   255 を超える付点 (1. など) は付けない (原作どおり . を捨てたのと同じ)"
+  [x dots]
+  (loop [x x add (quot x 2) d dots]
+    (if (or (zero? d) (zero? add) (> (+ x add) 255))
+      x
+      (recur (+ x add) (quot add 2) (dec d)))))
+
+(defn- read-dots
+  "s の i から続く . を数える → [数 次の位置]"
+  [s i]
+  (loop [j i] (if (= (get s j) \.) (recur (inc j)) [(- j i) j])))
 
 (defn parse-mml
   [text {:keys [st gt vel key-sig rhythm?] :or {st 48 gt 46 vel 64 key-sig 0}}]
@@ -61,7 +76,9 @@
                  (recur i o st gt vel chord out))
             \L (let [[a j] (read-int s i)]
                  (if (and a (<= 1 a 64))
-                   (let [x (quot 192 a)] (recur j oct x (- x 2) vel chord out))
+                   (let [[d j] (read-dots s j)
+                         x (dotted (quot 192 a) d)]
+                     (recur j oct x (- x 2) vel chord out))
                    (recur j oct st gt vel chord out)))
             \V (let [[a j] (read-int s i)]
                  (recur j oct st gt (if (and a (<= 0 a 127)) a vel) chord out))
@@ -75,6 +92,11 @@
                   [ss gg] (if (and a (<= 1 a 64))
                             (let [x (quot 192 a)] [x (- x 2)])
                             [st gt])
+                  ;; 付点【設計判断】: 長さの数字の後 (無ければ音名の後) の . 。GT は L や長さ指定と同じく ST-2
+                  [dots i] (read-dots s i)
+                  [ss gg] (if (pos? dots)
+                            (let [x (dotted ss dots)] (if (= x ss) [ss gg] [x (- x 2)]))
+                            [ss gg])
                   base (base-semi c)
                   adj (cond (nil? base) 0
                             explicit? (get {\# 1 \+ 1 \- -1} acc 0)
