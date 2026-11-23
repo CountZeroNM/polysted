@@ -17,20 +17,20 @@ STED2 の「**4 バイト固定長レコード (`[b0 b1 b2 b3]`)**」による�
 
 ## ダウンロードして試す（Clojure の開発環境は不要）
 
-[Releases](https://github.com/CountZeroNM/polysted/releases) から `polysted-0.1.1.jar`（約 7MB）をダウンロードして、そのまま動かせます。必要なのは **Java 17 以上**だけです（Java 21 で確認しています）。Java が入っていなければ、[Adoptium（Temurin）](https://adoptium.net/ja/) などから入れてください。
+[Releases](https://github.com/CountZeroNM/polysted/releases) から `polysted-0.1.2.jar`（約 7MB）をダウンロードして、そのまま動かせます。必要なのは **Java 17 以上**だけです（Java 21 で確認しています）。Java が入っていなければ、[Adoptium（Temurin）](https://adoptium.net/ja/) などから入れてください。
 
 ```bash
-java -jar polysted-0.1.1.jar                 # ウィンドウ (GUI) が開く。ダブルクリックでも同じ
-java -jar polysted-0.1.1.jar --tui           # 端末で使う (TUI)
-java -jar polysted-0.1.1.jar --repl          # REPL。(s/sample! 1) でサンプル曲、(s/play!) で再生
-java -jar polysted-0.1.1.jar --help          # 使い方
+java -jar polysted-0.1.2.jar                 # ウィンドウ (GUI) が開く。ダブルクリックでも同じ
+java -jar polysted-0.1.2.jar --tui           # 端末で使う (TUI)
+java -jar polysted-0.1.2.jar --repl          # REPL。(s/sample! 1) でサンプル曲、(s/play!) で再生
+java -jar polysted-0.1.2.jar --help          # 使い方
 ```
 
 - まずは、メニューの「ファイル → サンプル曲を開く」で曲を開き、`p`（か F12）で再生してみてください。
 - MIDI キーボードが無くても、仮想 MIDI キーボード [VMidiKey](https://github.com/CountZeroNM/vmidikey/releases) の jar を一緒に起動すれば、録音を試せます（VMidiKey の受け口は polysted の jar に入っています）。手順は「[レコーディング](#レコーディングctrl-x-recgui-は再生メニューにも原作の-realtime-recording)」へ。
 - **Windows**: Temurin を入れるときに「.jar の関連付け」を選んでおくと、ダブルクリックで開きます。
 - **macOS**: ダウンロードした jar は「開発元を確認できない」と止められることがあります。Control キーを押しながらクリックして「開く」を選ぶか、ターミナルから `java -jar` で起動してください。
-- **ChromeOS の Linux**: ウィンドウが開かず `Can't connect to X11 window server` と出るときは、`DISPLAY=:0 java -jar polysted-0.1.1.jar` で起動してください。
+- **ChromeOS の Linux**: ウィンドウが開かず `Can't connect to X11 window server` と出るときは、`DISPLAY=:0 java -jar polysted-0.1.2.jar` で起動してください。
 - マインクラフト（Java 版）のランチャーに入っている Java は、ランチャーの中だけのもので、パソコン全体からは使えません。MOD のインストールのために Java を入れている人は、そのまま使えます。
 
 自分で jar を作るときは、vmidikey を同じ階層に clone して `bb device` を実行してから、`clojure -T:build uber`（`target/polysted-<版>.jar`）。タグ `v*` を push すると、GitHub Actions が jar を作って Releases に置きます。
@@ -336,7 +336,7 @@ MIDI キーボードなどの入力を、MODE が **Mix**（既存のデータ�
 
 ##### MIDI キーボードが無いとき: 仮想 MIDI キーボード VMidiKey
 
-**配布用の jar で試す（いちばん簡単）**: [polysted](https://github.com/CountZeroNM/polysted/releases) と [VMidiKey](https://github.com/CountZeroNM/vmidikey/releases) の jar を両方ダウンロードし、`java -jar vmidikey-0.1.1.jar` と `java -jar polysted-0.1.1.jar` で両方を起動します。polysted の jar には VMidiKey の受け口が入っているので、録音の画面の MIDI IN に `VMidiKey` が出ます（本物の MIDI キーボードもつないでいるときは、そちらが既定。`I` で切り替え）。あとは下の 3. と同じです。
+**配布用の jar で試す（いちばん簡単）**: [polysted](https://github.com/CountZeroNM/polysted/releases) と [VMidiKey](https://github.com/CountZeroNM/vmidikey/releases) の jar を両方ダウンロードし、`java -jar vmidikey-0.1.1.jar` と `java -jar polysted-0.1.2.jar` で両方を起動します。polysted の jar には VMidiKey の受け口が入っているので、録音の画面の MIDI IN に `VMidiKey` が出ます（本物の MIDI キーボードもつないでいるときは、そちらが既定。`I` で切り替え）。あとは下の 3. と同じです。
 
 **ソースから使う**:
 
@@ -915,7 +915,7 @@ STED2 の画面・マニュアルに出てくる用語です。（　）内は�
 polysted は Java の内蔵音源（Gervill）で鳴らします。内蔵音源は既定で 120ms の遅れ（音のバッファ）で開かれるので、polysted は **40ms** で 1 度だけ開き、再生・録音中の THRU・メトロノームで共有します（0.1.1 から。以前は再生のたびに内蔵音源を開き直していました）。
 
 - 今の遅れは REPL の `(s/synth-info)` で見られます（`{:latency-ms 40 :tuned? true}`）。
-- 変えるときは、システムプロパティ `polysted.latency` か環境変数 `POLYSTED_LATENCY`（ミリ秒）。例: `java -Dpolysted.latency=60 -jar polysted-0.1.1.jar`。音がとぎれたりプツプツ鳴ったりするときは、60〜80 に上げてください。下限は約 35ms です。
+- 変えるときは、システムプロパティ `polysted.latency` か環境変数 `POLYSTED_LATENCY`（ミリ秒）。例: `java -Dpolysted.latency=60 -jar polysted-0.1.2.jar`。音がとぎれたりプツプツ鳴ったりするときは、60〜80 に上げてください。下限は約 35ms です。
 - 遅れの指定には Java の内部の機能を使うので、jar は manifest の `Add-Exports`、ソースからは `deps.edn` のエイリアス（`:tui` `:gui` `:repl` `:dev` `:check`）が、その許可を付けて起動します。それ以外の起動のしかたでは 120ms のままです。
 - OS の音声の出口（ChromeOS の Linux など）の遅れは、これとは別に加わります。
 

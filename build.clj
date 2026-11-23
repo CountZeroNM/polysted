@@ -6,7 +6,7 @@
 (ns build
   (:require [clojure.tools.build.api :as b]))
 
-(def version "0.1.1")
+(def version "0.1.2")
 (def class-dir "target/classes")
 (def uber-file (format "target/polysted-%s.jar" version))
 
